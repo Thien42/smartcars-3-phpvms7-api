@@ -32,7 +32,7 @@ class PirepsController extends Controller
         $pirep = Pirep::find($pirepID);
         $pirep->load('comments', 'acars_logs', 'acars');
 
-        $flightData = getFlightData($pirep);
+        $flightData = $this->getFlightData($pirep);
         return response()->json([
             'flightLog' => $pirep->comments->map(function ($a ) { return $a->comment;}),
             'locationData' => $pirep->acars->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
