@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * class ApiController
@@ -41,9 +42,11 @@ class PirepsController extends Controller
     }
 
     private function getFlightData($pirep, $user_id) {
-        $flightData = DB::table("smartCARS3_FlightData")->select('log')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
-        if (count($flightData) > 0) {
-            return json_decode(gzdecode($flightData[0]->log));
+        if (Schema::hasTable('smartCARS3_FlightData') == true) {
+            $flightData = DB::table("smartCARS3_FlightData")->select('log')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
+            if (count($flightData) > 0) {
+                return json_decode(gzdecode($flightData[0]->log));
+            }    
         }
         $pirep->load('comments', 'acars_logs', 'acars');
 
@@ -62,9 +65,11 @@ class PirepsController extends Controller
     }
 
     private function getLocationData($pirep, $user_id) {
-        $flightData = DB::table("smartCARS3_FlightData")->select('locations')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
-        if (count($flightData) > 0) {
-            return json_decode(gzdecode($flightData[0]->locations));
+        if (Schema::hasTable('smartCARS3_FlightData') == true) {
+            $flightData = DB::table("smartCARS3_FlightData")->select('locations')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
+            if (count($flightData) > 0) {
+                return json_decode(gzdecode($flightData[0]->locations));
+            }
         }
         $pirep->load('comments', 'acars_logs', 'acars');
 
