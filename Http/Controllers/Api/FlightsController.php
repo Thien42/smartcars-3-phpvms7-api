@@ -108,7 +108,7 @@ class FlightsController extends Controller
             $output[] = [
                 "bidID"            => $bid->id,
                 "number"           => $bid->flight->flight_number,
-                "code"             => $bid->flight->airline->code,
+                "code"             => $bid->flight->airline->icao,
                 "departureAirport" => $bid->flight->dpt_airport_id,
                 "arrivalAirport"   => $bid->flight->arr_airport_id,
                 "route"            => null,
