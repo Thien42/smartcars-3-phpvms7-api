@@ -32,9 +32,23 @@ class PirepsController extends Controller
         $pirep = Pirep::find($pirepID);
         $pirep->load('comments', 'acars_logs', 'acars');
 
+        $flightData = getFlightData($pirep);
+        return response()->json([
+            'flightLog' => $pirep->comments->map(function ($a ) { return $a->comment;}),
+            'locationData' => $pirep->acars->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
+            'flightData' => $flightData
+        ]);
+    }
+
+    private function getFlightData($pirep, $user_id) {
+        $flightData = DB::query("SELECT locations, log FROM smartCARS3_FlightData WHERE pilotID=? AND pirepID=?", [$user_id, $pirep->id]);
+        if (count($flightData) > 0) {
+            return $flightData;
+        }
+        $pirep->load('comments', 'acars_logs', 'acars');
+
         $flightData = [];
         $i = 0;
-
         foreach ($pirep->acars_logs->sortBy('created_at') as $acars_log) {
             $flightData[] = [
                 'eventId' => $acars_log->id,
@@ -44,12 +58,7 @@ class PirepsController extends Controller
                 'message' => $acars_log->log
             ];
         }
-        return response()->json([
-            'flightLog' => $pirep->comments->map(function ($a ) { return $a->comment;}),
-            'locationData' => $pirep->acars->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
-            'flightData' => $flightData
-        ]);
-
+        return $flightData;
     }
 
     /**
