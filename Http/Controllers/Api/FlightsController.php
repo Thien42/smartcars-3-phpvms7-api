@@ -323,7 +323,7 @@ class FlightsController extends Controller
             $output[] = [
                 "id"               => $flight->id,
                 "number"           => $flight->flight_number,
-                "code"             => $flight->airline->code,
+                "code"             => $flight->airline->icao,
                 "departureAirport" => $flight->dpt_airport_id,
                 "arrivalAirport"   => $flight->arr_airport_id,
                 "flightLevel"      => $flight->level,
