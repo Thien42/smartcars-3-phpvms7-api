@@ -319,6 +319,7 @@ class FlightsController extends Controller
                     $aircraft[] = $acf['id'];
                 }
             }
+
             $ft_converted = floatval(number_format($flight->flight_time / 60, 2));
             $output[] = [
                 "id"               => $flight->id,
@@ -333,7 +334,7 @@ class FlightsController extends Controller
                 "flightTime"       => $ft_converted,
                 "daysOfWeek"       => [],
                 "type"             => $this->flightType($flight->flight_type),
-                "aircraft"         => $aircraft,
+                "aircraft"         => sizeof($aircraft) === 1 ? $aircraft[0] : $aircraft,
                 "notes"            => $flight->notes
             ];
         }
