@@ -34,16 +34,16 @@ class PirepsController extends Controller
         $pirep->load('comments', 'acars_logs', 'acars');
 
         $flightData = $this->getFlightData($pirep, $user_id);
+        $locationData = $this->getLocationData($pirep, $user_id);
         return response()->json([
             'flightLog' => $pirep->comments->map(function ($a ) { return $a->comment;}),
-            'locationData' => $pirep->acars->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
+            'locationData' => $locationData,
             'flightData' => $flightData
         ]);
     }
 
     private function getFlightData($pirep, $user_id) {
-        // $flightData = DB::table("smartCARS3_FlightData")::query("SELECT locations, log FROM smartCARS3_FlightData WHERE pilotID=? AND pirepID=?", [$user_id, $pirep->id])->get();
-        $flightData = DB::table("smartCARS3_FlightData")->select('locations', 'log')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
+        $flightData = DB::table("smartCARS3_FlightData")->select('log')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
         if (count($flightData) > 0) {
             return json_decode(gzdecode($flightData[0]->log));
         }
@@ -61,6 +61,24 @@ class PirepsController extends Controller
             ];
         }
         return $flightData;
+    }
+
+    private function getLocationData($pirep, $user_id) {
+        $flightData = DB::table("smartCARS3_FlightData")->select('locations')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
+        if (count($flightData) > 0) {
+            return json_decode(gzdecode($flightData[0]->locations));
+        }
+        $pirep->load('comments', 'acars_logs', 'acars');
+
+        $locationData = [];
+        foreach ($pirep->acars->sortBy('created_at') as $acars) {
+            $locationData[] = [
+                'latitude' => $acars->lat,
+                'longitude' => $acars->lon,
+                'heading' => $acars->heading
+            ];
+        }
+        return $locationData;
     }
 
     /**
