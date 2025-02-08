@@ -334,6 +334,7 @@ class FlightsController extends Controller
                 "daysOfWeek"       => [],
                 "type"             => $this->flightType($flight->flight_type),
                 "aircraft"         => $aircraft
+                "notes"            => $flight->notes
             ];
         }
 
