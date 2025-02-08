@@ -42,7 +42,7 @@ class PirepsController extends Controller
     }
 
     private function getFlightData($pirep, $user_id) {
-        $flightData = DB::query("SELECT locations, log FROM smartCARS3_FlightData WHERE pilotID=? AND pirepID=?", [$user_id, $pirep->id]);
+        $flightData = DB::query("SELECT locations, log FROM smartCARS3_FlightData WHERE pilotID=? AND pirepID=?", [$user_id, $pirep->id])->get();
         if (count($flightData) > 0) {
             return $flightData;
         }
