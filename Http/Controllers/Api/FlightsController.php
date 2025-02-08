@@ -333,7 +333,7 @@ class FlightsController extends Controller
                 "flightTime"       => $ft_converted,
                 "daysOfWeek"       => [],
                 "type"             => $this->flightType($flight->flight_type),
-                "aircraft"         => $aircraft
+                "aircraft"         => $aircraft,
                 "notes"            => $flight->notes
             ];
         }
