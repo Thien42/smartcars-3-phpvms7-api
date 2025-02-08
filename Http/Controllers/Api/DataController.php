@@ -46,7 +46,7 @@ class DataController extends Controller
             $output[] = [
                 "id" => $item->id,
                 "code" => $item->icao,
-                "name" => "{$item->name}". $item->registration ? "({$item->registration})" : "",
+                "name" => "{$item->name}". ($item->registration !== "" ? "({$item->registration})" : ""),
                 "status" => AircraftStatus::label($item->status),
                 "serviceCeiling" => "40000",
                 "maximumPassengers" => 300,
