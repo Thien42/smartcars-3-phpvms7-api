@@ -45,7 +45,7 @@ class PirepsController extends Controller
         // $flightData = DB::table("smartCARS3_FlightData")::query("SELECT locations, log FROM smartCARS3_FlightData WHERE pilotID=? AND pirepID=?", [$user_id, $pirep->id])->get();
         $flightData = DB::table("smartCARS3_FlightData")->select('locations', 'log')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
         if (count($flightData) > 0) {
-            return json_decode(gzdecode($flightData[0]->locations))->flightData;
+            return json_decode(gzdecode($flightData[0]->locations))['flightData'];
         }
         $pirep->load('comments', 'acars_logs', 'acars');
 
