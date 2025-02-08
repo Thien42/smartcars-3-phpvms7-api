@@ -42,7 +42,7 @@ class PirepsController extends Controller
     }
 
     private function getFlightData($pirep, $user_id) {
-        if (Schema::hasTable('smartCARS3_FlightData') == true) {
+        if (Schema::hasTable('smartCARS3_FlightData')) {
             $flightData = DB::table("smartCARS3_FlightData")->select('log')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
             if (count($flightData) > 0) {
                 return json_decode(gzdecode($flightData[0]->log));
@@ -65,7 +65,7 @@ class PirepsController extends Controller
     }
 
     private function getLocationData($pirep, $user_id) {
-        if (Schema::hasTable('smartCARS3_FlightData') == true) {
+        if (Schema::hasTable('smartCARS3_FlightData')) {
             $flightData = DB::table("smartCARS3_FlightData")->select('locations')->where('pilotID', $user_id)->where('pirepID', $pirep->id)->get();
             if (count($flightData) > 0) {
                 return json_decode(gzdecode($flightData[0]->locations));
