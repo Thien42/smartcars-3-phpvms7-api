@@ -130,6 +130,10 @@ class PirepsController extends Controller
         $user = $user = Auth::user();
         $pirep = $user->latest_pirep;
 
+        if ($pirep == null) {
+            return response()->json([]);
+        }
+
         return response()->json([
             'id' => $pirep->id,
             'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateString(),
