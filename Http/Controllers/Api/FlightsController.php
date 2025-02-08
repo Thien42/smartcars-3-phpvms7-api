@@ -312,8 +312,6 @@ class FlightsController extends Controller
 
         foreach ($flights as $flight) {
             $aircraft = [];
-            //dd($bid);
-            // $flight = $this->flightService->filterSubfleets($request->user(), $flight);
             foreach ($flight->subfleets as $subfleet) {
                 foreach ($subfleet->aircraft as $acf) {
                     $aircraft[] = $acf['id'];

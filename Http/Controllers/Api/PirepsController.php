@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * class ApiController
