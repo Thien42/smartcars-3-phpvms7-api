@@ -4,6 +4,7 @@ namespace Modules\SmartCARS3phpVMS7Api\Http\Controllers\Api;
 
 use App\Contracts\Controller;
 use App\Models\Enums\PirepState;
+use App\Models\Acars;
 use App\Models\Pirep;
 use App\Models\PirepComment;
 use App\Models\User;
