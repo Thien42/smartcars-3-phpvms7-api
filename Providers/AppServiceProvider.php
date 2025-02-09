@@ -61,17 +61,17 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register views.
      */
-   public function registerViews()
-   {
-       $viewPath = resource_path('views/modules/smartcars3phpvms7api');
-       $sourcePath = __DIR__.'/../Resources/views';
+//    public function registerViews()
+//    {
+//        $viewPath = resource_path('views/modules/smartcars3phpvms7api');
+//        $sourcePath = __DIR__.'/../Resources/views';
 
-       $this->publishes([$sourcePath => $viewPath],'views');
+//        $this->publishes([$sourcePath => $viewPath],'views');
 
-       $this->loadViewsFrom(array_merge(array_map(function ($path) {
-           return $path . '/modules/smartcars3phpvms7api';
-       }, \Config::get('view.paths')), [$sourcePath]), 'smartcars3phpvms7api');
-   }
+//        $this->loadViewsFrom(array_merge(array_map(function ($path) {
+//            return $path . '/modules/smartcars3phpvms7api';
+//        }, \Config::get('view.paths')), [$sourcePath]), 'smartcars3phpvms7api');
+//    }
 
     /**
      * Register translations.

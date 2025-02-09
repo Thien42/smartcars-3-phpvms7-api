@@ -153,16 +153,6 @@ class PirepsController extends Controller
         ]);
     }
 
-    /**
-     * Handles /import
-     */
-    public function import(Request $request) {
-        // Run the import job
-        $job = new ImportOldPireps();
-        dispatch($job);
-    }
-
-
     function getStatus($value) {
         switch(intval($value)) {
             case 1:
