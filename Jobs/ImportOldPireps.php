@@ -7,7 +7,7 @@ use App\Models\Enums\PirepState;
 use App\Models\Enums\PirepStatus;
 use App\Models\Pirep;
 use App\Models\Acars;
-use App\Models\PirepLog;
+use App\Models\PirepComment;
 use App\Notifications\Channels\Discord\DiscordMessage;
 use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
@@ -57,10 +57,10 @@ class ImportOldPireps implements ShouldQueue
 
                 $log = json_decode(gzdecode($data->log));
                 foreach ($log as $event) {
-                    $pirepLog = new PirepLog();
+                    $pirepLog = new PirepComment();
                     $pirepLog->pirep_id = $pirep->id;
                     $pirepLog->user_id = $pirep->user_id;
-                    $pirepLog->log = $event->log;
+                    $pirepLog->comment = $event->message;
                     $pirepLog->created_at = $event->eventTimestamp;
                     $pirepLog->save();
                 }
