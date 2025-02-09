@@ -37,11 +37,6 @@ class PirepsController extends Controller
             'locationData' => $pirep->acars->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
             'flightData' => array_reverse($pirep->comments->map(function ($a ) { return ['eventId' => $a->id, 'eventTimestamp' => $a->created_at, 'eventElapsedTime' => 0, 'eventCondition' => null, 'message' => $a->comment];})->toArray()),
         ]);
-
-        // return response()->json([
-        //     'locationData' => Acars::where('pirep_id', $pirepID)->orderBy('order')->get()->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
-        //     'flightData' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return ['eventId' => $a->id, 'eventTimestamp' => $a->created_at, 'eventElapsedTime' => 0, 'eventCondition' => null, 'message' => $a->comment];}),
-        // ]);
     }
 
     /**
@@ -59,7 +54,7 @@ class PirepsController extends Controller
         foreach ($user->pireps->sortByDesc('created_at') as $pirep) {
             $output_pireps[] = [
                 'id' => $pirep->id,
-                'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateString(),
+                'submitDate' => $pirep->submitted_at,
                 'airlineCode' => $pirep->airline->icao,
                 'route' => [],
                 'number' => $pirep->flight_number,
