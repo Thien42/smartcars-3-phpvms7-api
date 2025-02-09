@@ -10,7 +10,6 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
-use Modules\SmartCARS3phpVMS7Api\Jobs\ImportOldPireps;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Auth;
