@@ -47,7 +47,7 @@ class ImportOldPireps implements ShouldQueue
         if (!Schema::hasTable('smartCARS3_FlightData')) {
             return;
         }
-        $flightData = DB::table("smartCARS3_FlightData")->orderBy('pirepID')->chunk(5, function($flightData) {
+        $flightData = DB::table("smartCARS3_FlightData")->orderBy('pirepID')->chunk(1, function($flightData) {
             foreach ($flightData as $data) {
                 $pirep = Pirep::find($data->pirepID);
                 if ($pirep === null) {
