@@ -30,26 +30,8 @@ class PirepsController extends Controller
         $pirepID = $request->get('id');
         $user_id = $request->get('pilotID');
 
-        $pirep = Pirep::find($pirepID);
-        $pirep->load('acars_logs');
-
-        $flightData = [];
-        $i = 0;
-
-        foreach ($pirep->acars_logs->sortBy('created_at') as $acars_log) {
-            $flightData[] = [
-                'eventId' => $acars_log->id,
-                'eventTimestamp' => $acars_log->created_at,
-                'eventElapsedTime' => $i,
-                'eventCondition' => null,
-                'message' => $acars_log->log
-            ];
-        }
         return response()->json([
-            // 'flightLog' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return $a->comment;}),
             'locationData' => Acars::where('pirep_id', $pirepID)->orderBy('order')->get()->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
-            // 'flightLog' => $pirep->comments->orderBy('created_at')->map(function ($a ) { return $a->comment;}),
-            // 'locationData' => $pirep->acars->orderBy('order')->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
             'flightData' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return ['eventId' => $a->id, 'eventTimestamp' => $a->created_at, 'eventElapsedTime' => 0, 'eventCondition' => null, 'message' => $a->comment];}),
         ]);
 
