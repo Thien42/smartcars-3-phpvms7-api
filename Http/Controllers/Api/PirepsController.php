@@ -56,7 +56,7 @@ class PirepsController extends Controller
                 'id' => $pirep->id,
                 'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateTimeString(),
                 'airlineCode' => $pirep->airline->icao,
-                'route' => [],
+                'route' => $pirep->route,
                 'number' => $pirep->flight_number,
                 'distance' => $pirep->planned_distance->getResponseUnits()['mi'],
                 'flightType' => $pirep->flight_type,
@@ -82,13 +82,17 @@ class PirepsController extends Controller
     public function latest(Request $request)
     {
         $user = $user = Auth::user();
-        $pirep = $user->latest_pirep;
+        $pirep = Pirep::where('user_id', $user->id)->orderBy('created_at', 'desc')->first();
+
+        if (!$pirep) {
+            return response()->json([]);
+        }
 
         return response()->json([
             'id' => $pirep->id,
             'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateString(),
             'airlineCode' => $pirep->airline->icao,
-            'route' => [],
+            'route' => $pirep->route,
             'number' => $pirep->flight_number,
             'distance' => $pirep->planned_distance->getResponseUnits()['mi'],
             'flightType' => $pirep->flight_type,
