@@ -54,9 +54,10 @@ class RouteServiceProvider extends ServiceProvider
         ];
 
         Route::group($config, function() {
+            $this->loadRoutesFrom(__DIR__.'/../Http/Routes/admin.php');
+
             Route::get('recalc', function() {
                 RecalculateAllDistances::dispatch();
-                $this->loadRoutesFrom(__DIR__.'/../Http/Routes/admin.php');
                 return "Pirep Calculation Job Queued. Please wait up to 10 minutes for pireps to get recalculated. If you have your private discord notification channel setup properly, you will receive notifications when this has been completed.";
             });
         });
