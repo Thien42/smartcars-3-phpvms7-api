@@ -13,7 +13,6 @@ use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\Skip;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Support\Facades\Log;
@@ -36,16 +35,6 @@ class ImportOldPireps implements ShouldQueue
     public function __construct()
     {
         //
-    }
-
-    /**
-    * Get the middleware the job should pass through.
-    */
-    public function middleware(): array
-    {
-        return [
-            Skip::when(!Schema::hasTable('smartCARS3_FlightData')),
-        ];
     }
 
     /**
