@@ -43,7 +43,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function registerLinks(): void
     {
-
+        $this->moduleSvc->addAdminLink('smartcars 3', '/admin/smartcars3phpvms7api');
     }
 
     /**
@@ -61,17 +61,17 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register views.
      */
-//    public function registerViews()
-//    {
-//        $viewPath = resource_path('views/modules/smartcars3phpvms7api');
-//        $sourcePath = __DIR__.'/../Resources/views';
-//
-//        $this->publishes([$sourcePath => $viewPath],'views');
-//
-//        $this->loadViewsFrom(array_merge(array_map(function ($path) {
-//            return $path . '/modules/smartcars3phpvms7api';
-//        }, \Config::get('view.paths')), [$sourcePath]), 'smartcars3phpvms7api');
-//    }
+   public function registerViews()
+   {
+       $viewPath = resource_path('views/modules/smartcars3phpvms7api');
+       $sourcePath = __DIR__.'/../Resources/views';
+
+       $this->publishes([$sourcePath => $viewPath],'views');
+
+       $this->loadViewsFrom(array_merge(array_map(function ($path) {
+           return $path . '/modules/smartcars3phpvms7api';
+       }, \Config::get('view.paths')), [$sourcePath]), 'smartcars3phpvms7api');
+   }
 
     /**
      * Register translations.

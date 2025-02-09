@@ -4,7 +4,6 @@ namespace Modules\SmartCARS3phpVMS7Api\Http\Controllers\Admin;
 
 use App\Contracts\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Admin controller
