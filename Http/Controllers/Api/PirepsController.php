@@ -54,7 +54,7 @@ class PirepsController extends Controller
         foreach ($user->pireps->sortByDesc('created_at') as $pirep) {
             $output_pireps[] = [
                 'id' => $pirep->id,
-                'submitDate' => $pirep->submitted_at,
+                'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateTimeString(),
                 'airlineCode' => $pirep->airline->icao,
                 'route' => [],
                 'number' => $pirep->flight_number,
