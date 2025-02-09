@@ -11,6 +11,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * class ApiController
