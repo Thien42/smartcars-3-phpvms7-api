@@ -46,13 +46,17 @@ class RouteServiceProvider extends ServiceProvider
     }
     public function registerAdminRoutes(): void
     {
-        Route::group([
-            'as' => 'admin.smartcars3phpvms7api',
-            'prefix' => 'admin/smartcars',
-            'middleware' => ['web', 'role:admin']
-        ], function() {
+        $config = [
+            'as'         => 'admin.smartcars3phpvms7api.',
+            'prefix'     => 'admin/smartcars',
+            'namespace'  => $this->namespace.'\Admin',
+            'middleware' => ['web', 'role:admin'],
+        ];
+
+        Route::group($config, function() {
             Route::get('recalc', function() {
                 RecalculateAllDistances::dispatch();
+                $this->loadRoutesFrom(__DIR__.'/../Http/Routes/admin.php');
                 return "Pirep Calculation Job Queued. Please wait up to 10 minutes for pireps to get recalculated. If you have your private discord notification channel setup properly, you will receive notifications when this has been completed.";
             });
         });
