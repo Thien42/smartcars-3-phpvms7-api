@@ -47,7 +47,7 @@ class PirepsController extends Controller
         }
         return response()->json([
             'flightLog' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return $a->comment;}),
-            'locationData' => Acars::where('pirep_id', $pirepID)->sortBy('order')->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
+            'locationData' => Acars::where('pirep_id', $pirepID)->orderBy('order')->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
             // 'flightLog' => $pirep->comments->orderBy('created_at')->map(function ($a ) { return $a->comment;}),
             // 'locationData' => $pirep->acars->orderBy('order')->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
             'flightData' => $flightData
