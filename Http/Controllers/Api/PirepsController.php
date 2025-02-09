@@ -46,11 +46,11 @@ class PirepsController extends Controller
             ];
         }
         return response()->json([
-            'flightLog' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return $a->comment;}),
+            // 'flightLog' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return $a->comment;}),
             'locationData' => Acars::where('pirep_id', $pirepID)->orderBy('order')->get()->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
             // 'flightLog' => $pirep->comments->orderBy('created_at')->map(function ($a ) { return $a->comment;}),
             // 'locationData' => $pirep->acars->orderBy('order')->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
-            'flightData' => $flightData
+            'flightData' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return ['eventId' => $a->id, 'eventTimestamp' => $a->created_at, 'eventElapsedTime' => 0, 'eventCondition' => null, 'message' => $a->comment];}),
         ]);
 
     }
