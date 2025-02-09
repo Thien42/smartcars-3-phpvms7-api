@@ -30,11 +30,18 @@ class PirepsController extends Controller
         $pirepID = $request->get('id');
         $user_id = $request->get('pilotID');
 
+        $pirep = Pirep::find($pirepID);
+        $pirep->load('comments', 'acars');
+
         return response()->json([
-            'locationData' => Acars::where('pirep_id', $pirepID)->orderBy('order')->get()->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
-            'flightData' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return ['eventId' => $a->id, 'eventTimestamp' => $a->created_at, 'eventElapsedTime' => 0, 'eventCondition' => null, 'message' => $a->comment];}),
+            'locationData' => $pirep->acars->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
+            'flightData' => $pirep->comments->map(function ($a ) { return ['eventId' => $a->id, 'eventTimestamp' => $a->created_at, 'eventElapsedTime' => 0, 'eventCondition' => null, 'message' => $a->comment];}),
         ]);
 
+        // return response()->json([
+        //     'locationData' => Acars::where('pirep_id', $pirepID)->orderBy('order')->get()->map(function ($a) {return ['latitude' => $a->lat, 'longitude' => $a->lon, 'heading' => $a->heading];}),
+        //     'flightData' => PirepComment::where('pirep_id', $pirepID)->orderBy('created_at')->get()->map(function ($a ) { return ['eventId' => $a->id, 'eventTimestamp' => $a->created_at, 'eventElapsedTime' => 0, 'eventCondition' => null, 'message' => $a->comment];}),
+        // ]);
     }
 
     /**
