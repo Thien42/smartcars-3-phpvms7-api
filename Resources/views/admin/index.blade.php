@@ -1,4 +1,4 @@
-@extends('scheduler::layouts.admin')
+@extends('smartcars3phpvms7api::layouts.admin')
 
 @section('title', 'smartCARS 3 API')
 @section('content')
