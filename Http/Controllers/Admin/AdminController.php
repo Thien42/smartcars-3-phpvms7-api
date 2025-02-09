@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\Scheduler\Http\Controllers\Admin;
+namespace Modules\SmartCARS3phpVMS7Api\Http\Controllers\Admin;
 
 use App\Contracts\Controller;
 use Illuminate\Http\Request;
