@@ -43,7 +43,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function registerLinks(): void
     {
-        $this->moduleSvc->addAdminLink('smartcars 3', '/admin/smartcars3phpvms7api');
     }
 
     /**
