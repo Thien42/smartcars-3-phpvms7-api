@@ -91,5 +91,6 @@ class ImportOldPireps implements ShouldQueue
                 }
             }
         });
+        Schema::dropIfExists('smartCARS3_FlightData');
     }
 }
