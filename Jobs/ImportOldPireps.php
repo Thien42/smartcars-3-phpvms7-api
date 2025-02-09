@@ -77,6 +77,8 @@ class ImportOldPireps implements ShouldQueue
                     $acars->lon = $location->longitude;
                     $acars->heading = round($location->heading);
                     $acars->order = $order++;
+                    $acars->sim_time = sprintf('%10d', $order);
+                    $acars->created_at = $pirep->created_at;
                     $acars->save();
                 }
             }
