@@ -6,6 +6,7 @@ use Illuminate\Routing\Router;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Route;
 use Modules\SmartCARS3phpVMS7Api\Jobs\RecalculateAllDistances;
+use Modules\SmartCARS3phpVMS7Api\Jobs\ImportOldPireps;
 
 /**
  * Register the routes required for your module here
