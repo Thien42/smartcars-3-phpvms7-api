@@ -55,11 +55,11 @@ class PirepsController extends Controller
 
         $query = [];
         if ($request->has('depApt')) {
-            array_push($query, ['dpt_airport_id', '=', substr($request->has('depApt'), 0, 4)]);
+            array_push($query, ['dpt_airport_id', '=', substr($request['depApt'], 0, 4)]);
         }
 
         if ($request->has('arrApt')) {
-            array_push($query, ['arr_airport_id', '=', substr($request->has('depApt'), 0, 4)]);
+            array_push($query, ['arr_airport_id', '=', substr($request['depApt'], 0, 4)]);
         }
 
         if ($request->has('status')) {
@@ -73,7 +73,6 @@ class PirepsController extends Controller
         if ($request->has('maxDate')) {
 
         }
-        // $pireps = Pirep::where($query)->sortByDesc('created_at')->get();
 
         foreach ($user->pireps->where($query)->sortByDesc('created_at') as $pirep) {
             $output_pireps[] = [
