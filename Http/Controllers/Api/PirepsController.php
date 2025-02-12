@@ -49,8 +49,8 @@ class PirepsController extends Controller
      */
     public function search(Request $request)
     {
-        // $user = User::find($request->get('pilotID'));
-        // $user->load('pireps', 'pireps.airline');
+        $user = User::find($request->get('pilotID'));
+        $user->load('pireps', 'pireps.airline');
         $output_pireps = [];
 
         $query = [];
