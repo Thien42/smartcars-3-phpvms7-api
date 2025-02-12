@@ -54,12 +54,12 @@ class PirepsController extends Controller
         $output_pireps = [];
 
         $query = [];
-        if ($request->has('depApt')) {
-            array_push($query, ['dpt_airport_id', '=', substr($request['depApt'], 0, 4)]);
+        if ($request->has('departureAirport')) {
+            array_push($query, ['dpt_airport_id', '=', substr($request['departureAirport'], 0, 4)]);
         }
 
-        if ($request->has('arrApt')) {
-            array_push($query, ['arr_airport_id', '=', substr($request['arrApt'], 0, 4)]);
+        if ($request->has('arrivalAirport')) {
+            array_push($query, ['arr_airport_id', '=', substr($request['arrivalAirport'], 0, 4)]);
         }
 
         if ($request->has('status')) {
