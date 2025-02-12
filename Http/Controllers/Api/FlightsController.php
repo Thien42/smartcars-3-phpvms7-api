@@ -275,6 +275,18 @@ class FlightsController extends Controller
             array_push($query, ['flight_time', '>', (int)$request['minimumFlightTime'] * 60]);
         }
 
+        if ($request->has('maximumFlightTime')) {
+            array_push($query, ['flight_time', '<', (int)$request['maximumFlightTime'] * 60]);
+        }
+
+        if ($request->has('minimumDistance')) {
+            array_push($query, ['distance', '>', (int)$request['minimumDistance']]);
+        }
+
+        if ($request->has('maximumDistance')) {
+            array_push($query, ['distance', '<', (int)$request['maximumDistance']]);
+        }
+
         if ($request->has('departureAirport') && $request->query('departureAirport') !== null) {
             $apt = Airport::where('icao', $request->query('departureAirport'))->first();
             if (!is_null($apt)) {
