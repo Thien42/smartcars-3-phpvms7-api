@@ -74,7 +74,7 @@ class PirepsController extends Controller
 
         }
 
-        foreach (Pirep::where($query)->sortByDesc('created_at')->get() as $pirep) {
+        foreach (Pirep::where($query)->orderBy('created_at', 'DESC')->get() as $pirep) {
             $output_pireps[] = [
                 'id' => $pirep->id,
                 'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateTimeString(),
