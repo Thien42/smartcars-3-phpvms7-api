@@ -59,7 +59,7 @@ class PirepsController extends Controller
         }
 
         if ($request->has('arrApt')) {
-            array_push($query, ['arr_airport_id', '=', substr($request['depApt'], 0, 4)]);
+            array_push($query, ['arr_airport_id', '=', substr($request['arrApt'], 0, 4)]);
         }
 
         if ($request->has('status')) {
@@ -74,7 +74,7 @@ class PirepsController extends Controller
 
         }
 
-        foreach ($user->pireps->where($query)->sortByDesc('created_at') as $pirep) {
+        foreach (Pirep::where($query)->sortByDesc('created_at')->get() as $pirep) {
             $output_pireps[] = [
                 'id' => $pirep->id,
                 'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateTimeString(),
