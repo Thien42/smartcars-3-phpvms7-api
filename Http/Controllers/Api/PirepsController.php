@@ -53,7 +53,7 @@ class PirepsController extends Controller
         // $user->load('pireps', 'pireps.airline');
         $output_pireps = [];
 
-        $query = [['user_id', '=', $request->get('pilotID')]];
+        $query = [];
         if ($request->has('depApt')) {
             array_push($query, ['dpt_airport_id', '=', substr($request->has('depApt'), 0, 4)]);
         }
@@ -73,9 +73,9 @@ class PirepsController extends Controller
         if ($request->has('maxDate')) {
 
         }
-        $pireps = Pirep::where($query)->sortByDesc('created_at')->get();
+        // $pireps = Pirep::where($query)->sortByDesc('created_at')->get();
 
-        foreach ($pireps as $pirep) {
+        foreach ($user->pireps->where($query)->sortByDesc('created_at') as $pirep) {
             $output_pireps[] = [
                 'id' => $pirep->id,
                 'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateTimeString(),
