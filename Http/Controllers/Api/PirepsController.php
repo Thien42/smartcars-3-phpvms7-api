@@ -53,7 +53,7 @@ class PirepsController extends Controller
         // $user->load('pireps', 'pireps.airline');
         $output_pireps = [];
 
-        $query = [];
+        $query = [['user_id', '=', $request->get('pilotID')]];
         if ($request->has('depApt')) {
             array_push($query, ['dpt_airport_id', '=', substr($request->has('depApt'), 0, 4)])
         }
