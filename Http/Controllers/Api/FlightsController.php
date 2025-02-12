@@ -272,7 +272,7 @@ class FlightsController extends Controller
         }
 
         if ($request->has('minDur')) {
-            array_push($query, ['flight_time', '>', (int)$request['minDur'] * 60])
+            array_push($query, ['flight_time', '>', (int)$request['minDur'] * 60]);
         }
 
         if ($request->has('departureAirport') && $request->query('departureAirport') !== null) {
