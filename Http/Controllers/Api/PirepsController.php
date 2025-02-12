@@ -49,10 +49,33 @@ class PirepsController extends Controller
      */
     public function search(Request $request)
     {
-        $user = User::find($request->get('pilotID'));
-        $user->load('pireps', 'pireps.airline');
+        // $user = User::find($request->get('pilotID'));
+        // $user->load('pireps', 'pireps.airline');
         $output_pireps = [];
-        foreach ($user->pireps->sortByDesc('created_at') as $pirep) {
+
+        $query = [];
+        if ($request->has('depApt')) {
+            array_push($query, ['dpt_airport_id', '=', substr($request->has('depApt'), 0, 4)])
+        }
+
+        if ($request->has('arrApt')) {
+            array_push($query, ['arr_airport_id', '=', substr($request->has('depApt'), 0, 4)]);
+        }
+
+        if ($request->has('status')) {
+
+        }
+
+        if ($request->has('minDate')) {
+
+        }
+
+        if ($request->has('maxDate')) {
+
+        }
+        $pireps = Pirep::where($query)->sortByDesc('created_at')->get();
+
+        foreach ($pireps as $pirep) {
             $output_pireps[] = [
                 'id' => $pirep->id,
                 'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateTimeString(),
