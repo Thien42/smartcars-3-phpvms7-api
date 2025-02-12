@@ -55,7 +55,7 @@ class PirepsController extends Controller
 
         $query = [['user_id', '=', $request->get('pilotID')]];
         if ($request->has('depApt')) {
-            array_push($query, ['dpt_airport_id', '=', substr($request->has('depApt'), 0, 4)])
+            array_push($query, ['dpt_airport_id', '=', substr($request->has('depApt'), 0, 4)]);
         }
 
         if ($request->has('arrApt')) {
