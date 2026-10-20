@@ -110,7 +110,7 @@ class FlightsController extends Controller
             $output[] = [
                 "bidID"            => $bid->id,
                 "number"           => $bid->flight->flight_number,
-                "code"             => $bid->flight->airline->code,
+                "code"             => $$bid->flight->airline->icao,
                 "departureAirport" => $bid->flight->dpt_airport_id,
                 "arrivalAirport"   => $bid->flight->arr_airport_id,
                 "route"            => $bid->flight->route ? explode(" ", $bid->flight->route) : null,
@@ -298,18 +298,19 @@ class FlightsController extends Controller
                 $query['arr_airport_id'] = $apt->id;
             }
         }
-	if ($request->has('minimumDistance')) {
-		array_push($query, ['distance', '>=', (int)$request->query('minimumDistance')]);
-	}
-	if ($request->has('maximumDistance')) {
-		array_push($query, ['distance', '<=', (int)$request->query('maximumDistance')]);
-	}
-	if ($request->has('minimumFlightTime')) {
-		array_push($query, ['flight_time', '>=', (int)$request->query('minimumFlightTime') * 60]);
-	}
-	if ($request->has('maximumFlightTime')) {
-		array_push($query, ['flight_time', '<=', (int)$request->query('maximumFlightTime') * 60]);
-	}
+
+        if ($request->has('minimumDistance')) {
+            array_push($query, ['distance', '>=', (int)$request->query('minimumDistance')]);
+        }
+        if ($request->has('maximumDistance')) {
+            array_push($query, ['distance', '<=', (int)$request->query('maximumDistance')]);
+        }
+        if ($request->has('minimumFlightTime')) {
+            array_push($query, ['flight_time', '>=', (int)$request->query('minimumFlightTime') * 60]);
+        }
+        if ($request->has('maximumFlightTime')) {
+            array_push($query, ['flight_time', '<=', (int)$request->query('maximumFlightTime') * 60]);
+        }
 
         if ($request->has('aircraft') && $request->query('aircraft') !== null) {
             // Yank the subfleet by ID
@@ -348,7 +349,7 @@ class FlightsController extends Controller
             $output[] = [
                 "id"               => $flight->id,
                 "number"           => $flight->flight_number,
-                "code"             => $flight->airline->code,
+                "code"             => $flight->airline->icao,
                 "departureAirport" => $flight->dpt_airport_id,
                 "arrivalAirport"   => $flight->arr_airport_id,
                 "flightLevel"      => $flight->level,
