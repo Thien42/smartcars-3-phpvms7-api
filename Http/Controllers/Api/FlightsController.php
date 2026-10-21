@@ -43,6 +43,8 @@ use Modules\SmartCARS3phpVMS7Api\Providers\AppServiceProvider;
  */
 class FlightsController extends Controller
 {
+    private const ARRIVAL_SEARCH_LIMIT = 200;
+
     public function __construct(
         public FlightService $flightService,
         public FareService $fareService,
@@ -299,18 +301,9 @@ class FlightsController extends Controller
             }
         }
 
-        if ($request->has('minimumDistance')) {
-            array_push($query, ['distance', '>=', (int)$request->query('minimumDistance')]);
-        }
-        if ($request->has('maximumDistance')) {
-            array_push($query, ['distance', '<=', (int)$request->query('maximumDistance')]);
-        }
-        if ($request->has('minimumFlightTime')) {
-            array_push($query, ['flight_time', '>=', (int)$request->query('minimumFlightTime') * 60]);
-        }
-        if ($request->has('maximumFlightTime')) {
-            array_push($query, ['flight_time', '<=', (int)$request->query('maximumFlightTime') * 60]);
-        }
+        $query = array_merge($query, $this->rangeConditions(
+            $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
+        ));
 
         if ($request->has('aircraft') && $request->query('aircraft') !== null) {
             // Yank the subfleet by ID
@@ -338,34 +331,104 @@ class FlightsController extends Controller
         }
 
         foreach ($flights as $flight) {
-            $aircraft = [];
-            $flight = $this->flightService->filterSubfleets($request->user(), $flight);
-            foreach ($flight->subfleets as $subfleet) {
-                foreach ($subfleet->aircraft as $acf) {
-                    $aircraft[] = $acf['id'];
-                }
-            }
-            $ft_converted = floatval(number_format($flight->flight_time / 60, 2));
-            $output[] = [
-                "id"               => $flight->id,
-                "number"           => $flight->flight_number,
-                "code"             => $flight->airline->icao,
-                "departureAirport" => $flight->dpt_airport_id,
-                "arrivalAirport"   => $flight->arr_airport_id,
-                "flightLevel"      => $flight->level,
-                "route"            => $flight->route ? explode(" ", $flight->route) : null,
-                "distance"         => $flight->distance->local(),
-                "departureTime"    => $flight->dpt_time,
-                "arrivalTime"      => $flight->arr_time,
-                "flightTime"       => $ft_converted,
-                "daysOfWeek"       => [],
-                "type"             => $this->flightType($flight->flight_type),
-                "aircraft"         => sizeof($aircraft) === 1 ? $aircraft[0] : $aircraft,
-                "notes"            => $flight->notes
-            ];
+            $output[] = $this->flightOutput($request, $flight);
         }
 
         return response()->json($output);
+    }
+    public function searchArrivals(Request $request)
+    {
+        $departure = $request->input('departureAirport');
+        if (!is_string($departure) || $departure === '') {
+            return response()->json(['message' => 'departureAirport is required'], 400);
+        }
+        $arrivals = $request->input('arrivalAirports');
+        if (!is_array($arrivals) || empty($arrivals)) {
+            return response()->json(['message' => 'arrivalAirports must be a non-empty array'], 400);
+        }
+
+        if (setting('pilots.only_flights_from_current')) {
+            $departureId = $request->user()->curr_airport_id;
+        } else {
+            $apt = Airport::where('icao', $departure)->first();
+            if (is_null($apt)) {
+                return response()->json([]);
+            }
+            $departureId = $apt->id;
+        }
+
+        $arrivalIds = Airport::whereIn('icao', array_values(array_filter($arrivals, 'is_string')))->pluck('id');
+        if ($arrivalIds->isEmpty()) {
+            return response()->json([]);
+        }
+
+        $limit = (int)$request->input('limit', self::ARRIVAL_SEARCH_LIMIT);
+        if ($limit < 1 || $limit > self::ARRIVAL_SEARCH_LIMIT) {
+            $limit = self::ARRIVAL_SEARCH_LIMIT;
+        }
+
+        $flights = Flight::where('dpt_airport_id', $departureId)
+            ->whereIn('arr_airport_id', $arrivalIds)
+            ->where($this->rangeConditions(
+                $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
+            ))
+            ->where('visible', true)
+            ->with('subfleets', 'subfleets.aircraft', 'airline')
+            ->orderBy('distance')
+            ->take($limit)
+            ->get();
+
+        $output = [];
+        foreach ($flights as $flight) {
+            $output[] = $this->flightOutput($request, $flight);
+        }
+
+        return response()->json($output);
+    }
+    private function rangeConditions(array $values): array
+    {
+        $conditions = [];
+        if (array_key_exists('minimumDistance', $values)) {
+            $conditions[] = ['distance', '>=', (int)$values['minimumDistance']];
+        }
+        if (array_key_exists('maximumDistance', $values)) {
+            $conditions[] = ['distance', '<=', (int)$values['maximumDistance']];
+        }
+        if (array_key_exists('minimumFlightTime', $values)) {
+            $conditions[] = ['flight_time', '>=', (int)$values['minimumFlightTime'] * 60];
+        }
+        if (array_key_exists('maximumFlightTime', $values)) {
+            $conditions[] = ['flight_time', '<=', (int)$values['maximumFlightTime'] * 60];
+        }
+        return $conditions;
+    }
+    private function flightOutput(Request $request, Flight $flight): array
+    {
+        $aircraft = [];
+        $flight = $this->flightService->filterSubfleets($request->user(), $flight);
+        foreach ($flight->subfleets as $subfleet) {
+            foreach ($subfleet->aircraft as $acf) {
+                $aircraft[] = $acf['id'];
+            }
+        }
+        $ft_converted = floatval(number_format($flight->flight_time / 60, 2));
+        return [
+            "id"               => $flight->id,
+            "number"           => $flight->flight_number,
+            "code"             => $flight->airline->icao,
+            "departureAirport" => $flight->dpt_airport_id,
+            "arrivalAirport"   => $flight->arr_airport_id,
+            "flightLevel"      => $flight->level,
+            "route"            => $flight->route ? explode(" ", $flight->route) : null,
+            "distance"         => $flight->distance->local(),
+            "departureTime"    => $flight->dpt_time,
+            "arrivalTime"      => $flight->arr_time,
+            "flightTime"       => $ft_converted,
+            "daysOfWeek"       => [],
+            "type"             => $this->flightType($flight->flight_type),
+            "aircraft"         => sizeof($aircraft) === 1 ? $aircraft[0] : $aircraft,
+            "notes"            => $flight->notes
+        ];
     }
     public function start(Request $request)
     {

@@ -43,6 +43,7 @@ Route::group(['middleware' => [SCHeaders::class]], function() {
             Route::match(['post', 'options'], '/cancel', 'cancel');
             Route::match(['post', 'options'], '/start', 'start');
             Route::match(['get', 'options'], '/search', 'search');
+            Route::match(['post', 'options'], '/search/arrivals', 'searchArrivals')->defaults('scCapability', 'arrival-search');
             Route::match(['post', 'options'], '/unbook', 'unbook');
             Route::match(['post', 'options'], '/update', 'update');
         });
