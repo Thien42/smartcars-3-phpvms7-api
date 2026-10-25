@@ -48,7 +48,8 @@ use Modules\SmartCARS3phpVMS7Api\Providers\AppServiceProvider;
  */
 class FlightsController extends Controller
 {
-    private const ARRIVAL_SEARCH_LIMIT = 200;
+    private const SEARCH_LIMIT = 250;
+    private const ARRIVAL_SEARCH_LIMIT = 250;
     private const DIVERSION_FIELD_SLUG = 'diversion-airport';
     private const AIRBORNE_STATUSES = [
         PirepStatus::TAKEOFF,
@@ -352,11 +353,11 @@ class FlightsController extends Controller
 
         $query = [];
         $subfleet = null;
-        $limit = 100;
+        $limit = self::SEARCH_LIMIT;
 
         if ($request->has('limit') && $request->query('limit') !== null) {
             $limit = $request->query('limit');
-            $limit = min($limit, 100);
+            $limit = min($limit, self::SEARCH_LIMIT);
         }
 
         if ($request->has('departureAirport') && $request->query('departureAirport') !== null) {
@@ -389,19 +390,19 @@ class FlightsController extends Controller
         }
         if (!empty($subfleet)) {
             if (empty($query)) {
-                $flights = Flight::with('subfleets', 'subfleets.aircraft', 'airline')->whereHas('subfleets', function ($query) use ($subfleet) {
+                $flights = Flight::with('subfleets', 'subfleets.aircraft', 'airline')->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')->whereHas('subfleets', function ($query) use ($subfleet) {
                     $query->where(['subfleets.id' => $subfleet, 'visible' => true]);
-                })->take(100)->get();
+                })->take($limit)->get();
             } else {
-                $flights = Flight::where($query)->with('subfleets', 'subfleets.aircraft', 'airline')->whereHas('subfleets', function ($query) use ($subfleet) {
+                $flights = Flight::where($query)->with('subfleets', 'subfleets.aircraft', 'airline')->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')->whereHas('subfleets', function ($query) use ($subfleet) {
                     $query->where(['subfleets.id' => $subfleet, 'visible' => true]);
-                })->take(100)->get();
+                })->take($limit)->get();
             }
         } else {
             if (empty($query)) {
-                $flights = Flight::with('subfleets', 'subfleets.aircraft', 'airline')->where('visible', true)->take($limit)->get();
+                $flights = Flight::with('subfleets', 'subfleets.aircraft', 'airline')->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')->where('visible', true)->take($limit)->get();
             } else {
-                $flights = Flight::where($query)->with('subfleets', 'subfleets.aircraft', 'airline')->where('visible', true)->take($limit)->get();
+                $flights = Flight::where($query)->with('subfleets', 'subfleets.aircraft', 'airline')->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')->where('visible', true)->take($limit)->get();
             }
         }
 
@@ -444,6 +445,7 @@ class FlightsController extends Controller
 
         $flights = Flight::where('dpt_airport_id', $departureId)
             ->whereIn('arr_airport_id', $arrivalIds)
+            ->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')
             ->where($this->rangeConditions(
                 $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
             ))
