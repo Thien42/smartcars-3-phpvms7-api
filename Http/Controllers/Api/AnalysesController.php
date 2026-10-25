@@ -16,9 +16,27 @@ class AnalysesController extends Controller
 {
     private const SEARCH_LIMIT = 100;
 
+    private const JSON_PARTS = [
+        'landingAnalysis' => 'landing_analysis',
+        'flightScore'     => 'flight_score_detail',
+        'approachTrail'   => 'approach_trail',
+        'takeoffAnalysis' => 'takeoff_analysis',
+        'takeoffTrail'    => 'takeoff_trail',
+        'debrief'         => 'debrief',
+    ];
+
+    private const JSON_FLAGS = JSON_PRESERVE_ZERO_FRACTION | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES;
+
     public function upload(Request $request)
     {
-        $pirepId = $request->input('pirepID');
+        // The raw body, not $request->input(): phpVMS's TrimStrings and ConvertEmptyStringsToNull
+        // middleware rewrite nested strings, and decoding to arrays would turn {} into [].
+        $body = json_decode($request->getContent());
+        if (!is_object($body)) {
+            return response()->json(['message' => 'A JSON object body is required'], 422);
+        }
+
+        $pirepId = $body->pirepID ?? null;
         $pirep = is_string($pirepId)
             ? Pirep::where(['id' => $pirepId, 'user_id' => Auth::id()])->first()
             : null;
@@ -26,30 +44,26 @@ class AnalysesController extends Controller
             return response()->json(['message' => 'PIREP not found'], 404);
         }
 
-        $formatVersion = $request->input('formatVersion');
-        if (!is_numeric($formatVersion)) {
-            return response()->json(['message' => 'formatVersion is required'], 422);
+        $formatVersion = $body->formatVersion ?? null;
+        if (!is_int($formatVersion) || $formatVersion < 0) {
+            return response()->json(['message' => 'formatVersion must be an integer >= 0'], 422);
         }
 
-        $landingAnalysis = $request->input('landingAnalysis');
-        $flightScore = $request->input('flightScore');
+        $landingAnalysis = $body->landingAnalysis ?? null;
+        $flightScore = $body->flightScore ?? null;
 
-        FlightAnalysis::updateOrCreate(
-            ['pirep_id' => $pirep->id],
-            [
-                'user_id'             => Auth::id(),
-                'format_version'      => (int) $formatVersion,
-                'touchdown_rate_fpm'  => data_get($landingAnalysis, 'touchdown.rateFpm'),
-                'landing_grade'       => data_get($landingAnalysis, 'overall'),
-                'flight_score'        => data_get($flightScore, 'blended'),
-                'landing_analysis'    => $landingAnalysis,
-                'flight_score_detail' => $flightScore,
-                'takeoff_analysis'    => $request->input('takeoffAnalysis'),
-                'debrief'             => $request->input('debrief'),
-                'approach_trail'      => $request->input('approachTrail'),
-                'takeoff_trail'       => $request->input('takeoffTrail'),
-            ]
-        );
+        $values = [
+            'user_id'            => Auth::id(),
+            'format_version'     => $formatVersion,
+            'touchdown_rate_fpm' => data_get($landingAnalysis, 'touchdown.rateFpm'),
+            'landing_grade'      => data_get($landingAnalysis, 'overall'),
+            'flight_score'       => data_get($flightScore, 'blended'),
+        ];
+        foreach (self::JSON_PARTS as $key => $column) {
+            $values[$column] = isset($body->{$key}) ? json_encode($body->{$key}, self::JSON_FLAGS) : null;
+        }
+
+        FlightAnalysis::updateOrCreate(['pirep_id' => $pirep->id], $values);
 
         return response()->json(['status' => 200]);
     }
@@ -70,16 +84,15 @@ class AnalysesController extends Controller
             ->get();
 
         return response()->json($rows->map(function ($row) {
-            return [
-                'pirepID'         => $row->pirep_id,
-                'formatVersion'   => $row->format_version,
-                'landingAnalysis' => $row->landing_analysis,
-                'flightScore'     => $row->flight_score_detail,
-                'approachTrail'   => $row->approach_trail,
-                'takeoffAnalysis' => $row->takeoff_analysis,
-                'takeoffTrail'    => $row->takeoff_trail,
-                'debrief'         => $row->debrief,
+            $result = [
+                'pirepID'       => $row->pirep_id,
+                'formatVersion' => $row->format_version,
             ];
-        })->values());
+            foreach (self::JSON_PARTS as $key => $column) {
+                $raw = $row->getRawOriginal($column);
+                $result[$key] = $raw === null ? null : json_decode($raw);
+            }
+            return $result;
+        })->values(), 200, [], self::JSON_FLAGS);
     }
 }

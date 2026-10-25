@@ -27,12 +27,7 @@ class FlightAnalysis extends Model
     ];
 
     protected $casts = [
-        'landing_analysis'    => 'array',
-        'flight_score_detail' => 'array',
-        'takeoff_analysis'    => 'array',
-        'debrief'             => 'array',
-        'approach_trail'      => 'array',
-        'takeoff_trail'       => 'array',
+        'format_version' => 'integer',
     ];
 
     public static $rules = [

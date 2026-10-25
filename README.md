@@ -82,4 +82,4 @@ Columns:
 - `touchdown_rate_fpm`: touchdown rate in feet per minute, for reports and queries
 - `landing_grade`: `excellent`, `good`, `fair` or `poor`
 - `flight_score`: blended flight score out of 100
-- `landing_analysis`, `flight_score_detail`, `takeoff_analysis`, `debrief`, `approach_trail`, `takeoff_trail`: the full smartCARS payloads as JSON text, each can be null
+- `landing_analysis`, `flight_score_detail`, `takeoff_analysis`, `debrief`, `approach_trail`, `takeoff_trail`: the full smartCARS payloads as JSON text, each can be null. They are stored exactly as sent: the module reads them from the raw request body, so phpVMS's `TrimStrings` / `ConvertEmptyStringsToNull` middleware does not alter them and `{}` stays an object
