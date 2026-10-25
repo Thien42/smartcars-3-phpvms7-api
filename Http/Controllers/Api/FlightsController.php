@@ -151,11 +151,14 @@ class FlightsController extends Controller
         if ($pirep === null) {
             return response()->json(['status' => 200]);
         }
-        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED], true)) {
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED, PirepState::CANCELLED], true)) {
             return response()->json(['message' => 'This flight has already been filed'], 409);
         }
 
-        $this->pirepService->cancel($pirep);
+        // A CANCELLED one is a retry after a failed delete transaction
+        if ($pirep->state !== PirepState::CANCELLED) {
+            $this->pirepService->cancel($pirep);
+        }
 
         DB::transaction(function () use ($pirep) {
             // Keep flight_id so the OFP stays on the booked flight
@@ -187,12 +190,8 @@ class FlightsController extends Controller
         }
 
         if ($icao === $pirep->arr_airport_id) {
+            // The status stays as is: the next update restores the phase
             PirepFieldValue::where(['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG])->delete();
-            if ($pirep->status === PirepStatus::DIVERTED) {
-                // The next update restores the phase
-                $pirep->status = PirepStatus::LANDED;
-                $pirep->save();
-            }
         } else {
             PirepFieldValue::updateOrCreate(
                 ['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG],
@@ -573,13 +572,6 @@ class FlightsController extends Controller
         // Check if a phase has changed
         $pirep->status = $this->phaseToStatus($input['phase']);
 
-        if (
-            in_array($pirep->status, self::AIRBORNE_STATUSES, true) &&
-            PirepFieldValue::where(['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG])->exists()
-        ) {
-            $pirep->status = PirepStatus::DIVERTED;
-        }
-
         // This section of code is more or less a patch until a better solution is implemented.
         if (
             (
@@ -597,6 +589,13 @@ class FlightsController extends Controller
             ) &&
             $pirep->block_on_time == null) {
             $pirep->block_on_time == Carbon::now();
+        }
+
+        if (
+            in_array($pirep->status, self::AIRBORNE_STATUSES, true) &&
+            PirepFieldValue::where(['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG])->exists()
+        ) {
+            $pirep->status = PirepStatus::DIVERTED;
         }
         $pirep->updated_at = Carbon::now();
 

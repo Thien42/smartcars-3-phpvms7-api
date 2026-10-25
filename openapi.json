@@ -978,7 +978,7 @@
         "/flights/cancel": {
             "post": {
                 "summary": "Cancel Flight",
-                "description": "Cancel an ongoing flight. The unfiled PIREP is cancelled and then deleted together with its ACARS positions and logs; a SimBrief OFP stays attached to the booked flight. Only the calling pilot's own PIREP is touched; a PIREP that is unknown, already deleted or owned by another pilot answers 200 as well, so the call can be repeated safely.",
+                "description": "Cancel an ongoing flight. The unfiled PIREP is cancelled and then deleted together with its ACARS positions and logs; a SimBrief OFP stays attached to the booked flight. Only the calling pilot's own PIREP is touched; a PIREP that is unknown, already deleted or owned by another pilot answers 200 as well, so the call can be repeated safely. A PIREP left in the cancelled state by an earlier call that failed part way is deleted on the next call.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -991,7 +991,7 @@
                                 "properties": {
                                     "uuid": {
                                         "type": "string",
-                                        "format": "uuid"
+                                        "description": "The PIREP ID (a phpVMS hash ID)"
                                     },
                                     "bidID": {
                                         "oneOf": [
@@ -1052,7 +1052,7 @@
         "/flights/divert": {
             "post": {
                 "summary": "Divert Flight",
-                "description": "Record a diversion on an ongoing flight using phpVMS's own diversion handling. The airport is stored in the PIREP's \"diversion-airport\" field and the PIREP status becomes DV; phpVMS then moves the aircraft and pilot to that airport when the PIREP is filed. A second call replaces the airport. Sending the booked arrival airport removes the diversion again. While a diversion is recorded, /flights/update keeps the DV status during takeoff, climb, enroute, approach and landing. Only available when the phpVMS \"pireps.handle_diversion\" setting is on.",
+                "description": "Record a diversion on an ongoing flight using phpVMS's own diversion handling. The airport is stored in the PIREP's \"diversion-airport\" field and the PIREP status becomes DV; phpVMS then moves the aircraft and pilot to that airport when the PIREP is filed. A second call replaces the airport. Sending the booked arrival airport removes the diversion again and leaves the status as is; the next /flights/update sets it from the flight phase. While a diversion is recorded, /flights/update keeps the DV status during takeoff, climb, enroute, approach and landing. Only available when the phpVMS \"pireps.handle_diversion\" setting is on.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -1065,13 +1065,11 @@
                                 "properties": {
                                     "uuid": {
                                         "type": "string",
-                                        "format": "uuid",
-                                        "description": "The PIREP ID of the ongoing flight"
+                                        "description": "The PIREP ID (a phpVMS hash ID) of the ongoing flight"
                                     },
                                     "airport": {
                                         "type": "string",
-                                        "pattern": "^[A-Z]{4}$",
-                                        "description": "The ICAO code of the diversion airport"
+                                        "description": "The phpVMS airport ID of the diversion airport, case-insensitive"
                                     }
                                 }
                             }
@@ -1993,7 +1991,7 @@
         "/pireps/analyses": {
             "post": {
                 "summary": "Upload Flight Analyses",
-                "description": "Store the smartCARS analyses of a finished flight (landing, flight score, takeoff, trails and debrief), replacing any earlier upload for the same PIREP. Only the calling pilot's own PIREPs are accepted. The payloads are stored as JSON in the sc_flight_analyses table; the touchdown rate, landing grade and blended flight score are also copied into their own columns. Cancelling a flight deletes its row.",
+                "description": "Store the smartCARS analyses of a finished flight (landing, flight score, takeoff, trails and debrief), replacing any earlier upload for the same PIREP. Only the calling pilot's own PIREPs are accepted. The payloads are stored as JSON in the sc_flight_analyses table; each part is stored exactly as sent (taken from the raw request body, so empty strings and empty objects survive) and returned the same way by /pireps/analyses/search; the touchdown rate, landing grade and blended flight score are also copied into their own columns. Cancelling a flight deletes its row.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -2006,8 +2004,7 @@
                                 "properties": {
                                     "pirepID": {
                                         "type": "string",
-                                        "format": "uuid",
-                                        "description": "The PIREP the analyses belong to"
+                                        "description": "The PIREP ID (a phpVMS hash ID) the analyses belong to"
                                     },
                                     "formatVersion": {
                                         "type": "integer",
@@ -2113,7 +2110,7 @@
                         }
                     },
                     "422": {
-                        "description": "422 - formatVersion is missing",
+                        "description": "422 - formatVersion is not an integer >= 0, or the body is not a JSON object",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2162,7 +2159,7 @@
                                         "maxItems": 100,
                                         "items": {
                                             "type": "string",
-                                            "format": "uuid"
+                                            "description": "A PIREP ID (a phpVMS hash ID)"
                                         }
                                     }
                                 }
@@ -2185,8 +2182,7 @@
                                         ],
                                         "properties": {
                                             "pirepID": {
-                                                "type": "string",
-                                                "format": "uuid"
+                                                "type": "string"
                                             },
                                             "formatVersion": {
                                                 "type": "integer"
