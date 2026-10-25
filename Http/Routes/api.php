@@ -41,6 +41,7 @@ Route::group(['middleware' => [SCHeaders::class]], function() {
             Route::match(['post', 'options'], '/charter', 'charter');
             Route::match(['post', 'options'], '/complete', 'complete');
             Route::match(['post', 'options'], '/cancel', 'cancel');
+            Route::match(['post', 'options'], '/divert', 'divert')->defaults('scCapability', 'divert')->defaults('scCapabilitySetting', 'pireps.handle_diversion');
             Route::match(['post', 'options'], '/start', 'start');
             Route::match(['get', 'options'], '/search', 'search');
             Route::match(['post', 'options'], '/search/arrivals', 'searchArrivals')->defaults('scCapability', 'arrival-search');

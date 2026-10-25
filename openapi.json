@@ -1049,6 +1049,104 @@
                 }
             }
         },
+        "/flights/divert": {
+            "post": {
+                "summary": "Divert Flight",
+                "description": "Record a diversion on an ongoing flight using phpVMS's own diversion handling. The airport is stored in the PIREP's \"diversion-airport\" field and the PIREP status becomes DV; phpVMS then moves the aircraft and pilot to that airport when the PIREP is filed. A second call replaces the airport. Sending the booked arrival airport removes the diversion again. While a diversion is recorded, /flights/update keeps the DV status during takeoff, climb, enroute, approach and landing. Only available when the phpVMS \"pireps.handle_diversion\" setting is on.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "uuid",
+                                    "airport"
+                                ],
+                                "properties": {
+                                    "uuid": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "description": "The PIREP ID of the ongoing flight"
+                                    },
+                                    "airport": {
+                                        "type": "string",
+                                        "pattern": "^[A-Z]{4}$",
+                                        "description": "The ICAO code of the diversion airport"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "200 - The diversion was recorded (or cleared)"
+                    },
+                    "401": {
+                        "description": "401 - Invalid session",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/UnauthorizedError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "404 - No such flight for this pilot",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "409 - The flight is not in progress",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "422 - Unknown airport, or diversion handling is disabled for this VA",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "options": {
+                "summary": "Divert Capability",
+                "description": "Lets clients detect whether this API supports diversions. The X-SmartCARS-Capability header is only sent when the phpVMS \"pireps.handle_diversion\" setting is on.",
+                "responses": {
+                    "200": {
+                        "description": "200 - Diversions are supported when the header is present",
+                        "headers": {
+                            "X-SmartCARS-Capability": {
+                                "description": "Comma-separated list of capabilities of this route; contains divert only when diversion handling is enabled",
+                                "schema": {
+                                    "type": "string",
+                                    "example": "divert"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/flights/complete": {
             "post": {
                 "summary": "Complete Flight",

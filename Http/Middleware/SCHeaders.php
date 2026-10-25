@@ -36,8 +36,10 @@ class SCHeaders
             'Access-Control-Allow-Headers' => 'Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With',
             'Access-Control-Allow-Origin' => '*'
         ]);
-        $capability = $request->route()?->defaults['scCapability'] ?? null;
-        if ($capability !== null) {
+        $defaults = $request->route()?->defaults ?? [];
+        $capability = $defaults['scCapability'] ?? null;
+        $capabilitySetting = $defaults['scCapabilitySetting'] ?? null;
+        if ($capability !== null && ($capabilitySetting === null || setting($capabilitySetting, false))) {
             $response->headers->set('X-SmartCARS-Capability', $capability);
         }
         return $response;

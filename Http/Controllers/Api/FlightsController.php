@@ -15,6 +15,7 @@ use App\Models\Enums\AcarsType;
 use App\Models\Enums\AircraftStatus;
 use App\Models\Enums\FareType;
 use App\Models\Enums\FlightType;
+use App\Models\Enums\PirepFieldSource;
 use App\Models\Enums\PirepSource;
 use App\Models\Enums\PirepState;
 use App\Models\Enums\PirepStatus;
@@ -22,6 +23,7 @@ use App\Models\Fare;
 use App\Models\Flight;
 use App\Models\Pirep;
 use App\Models\PirepFare;
+use App\Models\PirepFieldValue;
 use App\Models\SimBrief;
 use App\Models\Subfleet;
 use App\Models\User;
@@ -46,6 +48,15 @@ use Modules\SmartCARS3phpVMS7Api\Providers\AppServiceProvider;
 class FlightsController extends Controller
 {
     private const ARRIVAL_SEARCH_LIMIT = 200;
+    private const DIVERSION_FIELD_SLUG = 'diversion-airport';
+    private const AIRBORNE_STATUSES = [
+        PirepStatus::TAKEOFF,
+        PirepStatus::INIT_CLIM,
+        PirepStatus::ENROUTE,
+        PirepStatus::APPROACH,
+        PirepStatus::APPROACH_ICAO,
+        PirepStatus::LANDING,
+    ];
 
     public function __construct(
         public FlightService $flightService,
@@ -152,6 +163,42 @@ class FlightsController extends Controller
             PirepLog::where('pirep_id', $pirep->id)->delete();
             $this->pirepService->delete($pirep);
         });
+
+        return response()->json(['status' => 200]);
+    }
+    public function divert(Request $request)
+    {
+        $pirep = Pirep::where(['id' => $request->input('uuid'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['message' => 'No active flight'], 404);
+        }
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED], true)) {
+            return response()->json(['message' => 'This flight is not in progress'], 409);
+        }
+        if (!setting('pireps.handle_diversion', false)) {
+            return response()->json(['message' => 'Diversion handling is disabled for this VA'], 422);
+        }
+
+        $icao = strtoupper(trim((string) $request->input('airport')));
+        if ($icao === '' || Airport::find($icao) === null) {
+            return response()->json(['message' => 'Unknown airport'], 422);
+        }
+
+        if ($icao === $pirep->arr_airport_id) {
+            PirepFieldValue::where(['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG])->delete();
+            if ($pirep->status === PirepStatus::DIVERTED) {
+                // The next update restores the phase
+                $pirep->status = PirepStatus::LANDED;
+                $pirep->save();
+            }
+        } else {
+            PirepFieldValue::updateOrCreate(
+                ['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG],
+                ['name' => 'Diversion Airport', 'value' => $icao, 'source' => PirepFieldSource::ACARS]
+            );
+            $pirep->status = PirepStatus::DIVERTED;
+            $pirep->save();
+        }
 
         return response()->json(['status' => 200]);
     }
@@ -523,6 +570,13 @@ class FlightsController extends Controller
 
         // Check if a phase has changed
         $pirep->status = $this->phaseToStatus($input['phase']);
+
+        if (
+            in_array($pirep->status, self::AIRBORNE_STATUSES, true) &&
+            PirepFieldValue::where(['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG])->exists()
+        ) {
+            $pirep->status = PirepStatus::DIVERTED;
+        }
 
         // This section of code is more or less a patch until a better solution is implemented.
         if (
