@@ -1148,13 +1148,14 @@
         "/flights/complete": {
             "post": {
                 "summary": "Complete Flight",
-                "description": "Complete and file a PIREP for an ongoing flight",
+                "description": "Complete and file a PIREP for an ongoing flight. Only the calling pilot's own PIREP is filed. A PIREP that was already filed (pending, accepted or rejected) is left untouched and its ID is returned again, so the call can be repeated safely, including after a failure that happened once the PIREP was saved.",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
                                 "required": [
+                                    "uuid",
                                     "bidID",
                                     "remainingLoad",
                                     "flightTime",
@@ -1165,6 +1166,10 @@
                                     "flightData"
                                 ],
                                 "properties": {
+                                    "uuid": {
+                                        "type": "string",
+                                        "description": "The PIREP ID (a phpVMS hash ID) of the ongoing flight"
+                                    },
                                     "bidID": {
                                         "oneOf": [
                                             {
@@ -1220,7 +1225,23 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "200 - Flight was successfully finished"
+                        "description": "200 - Flight was successfully finished, or had already been filed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "pirepID"
+                                    ],
+                                    "properties": {
+                                        "pirepID": {
+                                            "type": "string",
+                                            "description": "The ID of the filed PIREP"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     },
                     "400": {
                         "description": "400 - Invalid type",
@@ -1245,7 +1266,7 @@
                         }
                     },
                     "404": {
-                        "description": "404 - Flight not found",
+                        "description": "404 - No such flight for this pilot",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1257,6 +1278,17 @@
                     },
                     "405": {
                         "description": "405 - The POST method was not used",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "409 - The flight is neither in progress nor filed (cancelled, deleted or a draft)",
                         "content": {
                             "application/json": {
                                 "schema": {

@@ -263,6 +263,18 @@ class FlightsController extends Controller
     }
     public function complete(Request $request)
     {
+        $pirep = Pirep::where(['id' => $request->input('uuid'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['message' => 'No active flight'], 404);
+        }
+        // A retry after a failure past the save must not log the flight a second time
+        if (in_array($pirep->state, [PirepState::PENDING, PirepState::ACCEPTED, PirepState::REJECTED], true)) {
+            return response()->json(['pirepID' => $pirep->id]);
+        }
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED], true)) {
+            return response()->json(['message' => 'This flight is not in progress'], 409);
+        }
+
         $input = $request->all();
         if (gettype($input['flightLog']) === "string") {
             $input['flightLog'] = base64_decode($input['flightLog'], true);
@@ -276,8 +288,6 @@ class FlightsController extends Controller
             //logger("Flight Data");
             //logger($input['flightData']);
         }
-        $pirep = Pirep::find($input['uuid']);
-        
 
         //Log::debug("Found Pirep to close out");
         $pirep->status = PirepStatus::ARRIVED;
