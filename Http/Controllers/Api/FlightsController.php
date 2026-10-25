@@ -22,6 +22,7 @@ use App\Models\Fare;
 use App\Models\Flight;
 use App\Models\Pirep;
 use App\Models\PirepFare;
+use App\Models\SimBrief;
 use App\Models\Subfleet;
 use App\Models\User;
 use App\Services\BidService;
@@ -31,6 +32,7 @@ use App\Services\PirepService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\SmartCARS3phpVMS7Api\Actions\PirepDistanceCalculation;
@@ -133,9 +135,24 @@ class FlightsController extends Controller
     }
     public function cancel(Request $request)
     {
-        $input = $request->all();
-        $pirep = Pirep::find($input['uuid']);
+        $pirep = Pirep::where(['id' => $request->input('uuid'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['status' => 200]);
+        }
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED], true)) {
+            return response()->json(['message' => 'This flight has already been filed'], 409);
+        }
+
         $this->pirepService->cancel($pirep);
+
+        DB::transaction(function () use ($pirep) {
+            // Keep flight_id so the OFP stays on the booked flight
+            SimBrief::where('pirep_id', $pirep->id)->update(['pirep_id' => null]);
+            Acars::where('pirep_id', $pirep->id)->delete();
+            PirepLog::where('pirep_id', $pirep->id)->delete();
+            $this->pirepService->delete($pirep);
+        });
+
         return response()->json(['status' => 200]);
     }
     public function charter(Request $request)

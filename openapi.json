@@ -978,7 +978,7 @@
         "/flights/cancel": {
             "post": {
                 "summary": "Cancel Flight",
-                "description": "Cancel an ongoing flight",
+                "description": "Cancel an ongoing flight. The unfiled PIREP is cancelled and then deleted together with its ACARS positions and logs; a SimBrief OFP stays attached to the booked flight. Only the calling pilot's own PIREP is touched; a PIREP that is unknown, already deleted or owned by another pilot answers 200 as well, so the call can be repeated safely.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -1011,7 +1011,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "200 - The flight was cancelled"
+                        "description": "200 - The flight was cancelled and deleted, or no such flight exists for this pilot"
                     },
                     "401": {
                         "description": "401 - Invalid session",
@@ -1024,8 +1024,8 @@
                             }
                         }
                     },
-                    "404": {
-                        "description": "404 - Flight not found",
+                    "405": {
+                        "description": "405 - The POST method was not used",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1035,8 +1035,8 @@
                             }
                         }
                     },
-                    "405": {
-                        "description": "405 - The POST method was not used",
+                    "409": {
+                        "description": "409 - The PIREP has already been filed and is left untouched",
                         "content": {
                             "application/json": {
                                 "schema": {
