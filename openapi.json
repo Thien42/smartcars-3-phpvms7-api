@@ -1989,6 +1989,322 @@
                     }
                 }
             }
+        },
+        "/pireps/analyses": {
+            "post": {
+                "summary": "Upload Flight Analyses",
+                "description": "Store the smartCARS analyses of a finished flight (landing, flight score, takeoff, trails and debrief), replacing any earlier upload for the same PIREP. Only the calling pilot's own PIREPs are accepted. The payloads are stored as JSON in the sc_flight_analyses table; the touchdown rate, landing grade and blended flight score are also copied into their own columns. Cancelling a flight deletes its row.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "pirepID",
+                                    "formatVersion"
+                                ],
+                                "properties": {
+                                    "pirepID": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "description": "The PIREP the analyses belong to"
+                                    },
+                                    "formatVersion": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "example": 1,
+                                        "description": "Version of the payload format; 1 today"
+                                    },
+                                    "landingAnalysis": {
+                                        "oneOf": [
+                                            {
+                                                "$ref": "#/components/schemas/LandingAnalysis"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "flightScore": {
+                                        "oneOf": [
+                                            {
+                                                "$ref": "#/components/schemas/FlightScore"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "approachTrail": {
+                                        "oneOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "$ref": "#/components/schemas/ApproachSample"
+                                                }
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "takeoffAnalysis": {
+                                        "oneOf": [
+                                            {
+                                                "$ref": "#/components/schemas/TakeoffAnalysis"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "takeoffTrail": {
+                                        "oneOf": [
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "$ref": "#/components/schemas/ApproachSample"
+                                                }
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "debrief": {
+                                        "oneOf": [
+                                            {
+                                                "$ref": "#/components/schemas/FlightDebrief"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "200 - The analyses were stored"
+                    },
+                    "401": {
+                        "description": "401 - Invalid session",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/UnauthorizedError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "404 - The PIREP does not exist or is not the pilot's",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "422 - formatVersion is missing",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "options": {
+                "summary": "Flight Analyses Capability",
+                "description": "Lets clients detect whether this API stores flight analyses. The response carries the X-SmartCARS-Capability header.",
+                "responses": {
+                    "200": {
+                        "description": "200 - Flight analyses are supported",
+                        "headers": {
+                            "X-SmartCARS-Capability": {
+                                "description": "Comma-separated list of capabilities of this route; contains flight-analyses",
+                                "schema": {
+                                    "type": "string",
+                                    "example": "flight-analyses"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/pireps/analyses/search": {
+            "post": {
+                "summary": "Search Flight Analyses",
+                "description": "Return the stored analyses for the given PIREPs. PIREPs that are not the calling pilot's or have no stored analyses are left out.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "pirepIDs"
+                                ],
+                                "properties": {
+                                    "pirepIDs": {
+                                        "type": "array",
+                                        "maxItems": 100,
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "200 - The stored analyses",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "pirepID",
+                                            "formatVersion"
+                                        ],
+                                        "properties": {
+                                            "pirepID": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "formatVersion": {
+                                                "type": "integer"
+                                            },
+                                            "landingAnalysis": {
+                                                "oneOf": [
+                                                    {
+                                                        "$ref": "#/components/schemas/LandingAnalysis"
+                                                    },
+                                                    {
+                                                        "type": "null"
+                                                    }
+                                                ]
+                                            },
+                                            "flightScore": {
+                                                "oneOf": [
+                                                    {
+                                                        "$ref": "#/components/schemas/FlightScore"
+                                                    },
+                                                    {
+                                                        "type": "null"
+                                                    }
+                                                ]
+                                            },
+                                            "approachTrail": {
+                                                "oneOf": [
+                                                    {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "$ref": "#/components/schemas/ApproachSample"
+                                                        }
+                                                    },
+                                                    {
+                                                        "type": "null"
+                                                    }
+                                                ]
+                                            },
+                                            "takeoffAnalysis": {
+                                                "oneOf": [
+                                                    {
+                                                        "$ref": "#/components/schemas/TakeoffAnalysis"
+                                                    },
+                                                    {
+                                                        "type": "null"
+                                                    }
+                                                ]
+                                            },
+                                            "takeoffTrail": {
+                                                "oneOf": [
+                                                    {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "$ref": "#/components/schemas/ApproachSample"
+                                                        }
+                                                    },
+                                                    {
+                                                        "type": "null"
+                                                    }
+                                                ]
+                                            },
+                                            "debrief": {
+                                                "oneOf": [
+                                                    {
+                                                        "$ref": "#/components/schemas/FlightDebrief"
+                                                    },
+                                                    {
+                                                        "type": "null"
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "401 - Invalid session",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/UnauthorizedError"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "422 - pirepIDs is missing or has more than 100 entries",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "options": {
+                "summary": "Flight Analyses Search Capability",
+                "description": "Lets clients detect whether this API stores flight analyses. The response carries the X-SmartCARS-Capability header.",
+                "responses": {
+                    "200": {
+                        "description": "200 - Flight analyses are supported",
+                        "headers": {
+                            "X-SmartCARS-Capability": {
+                                "description": "Comma-separated list of capabilities of this route; contains flight-analyses",
+                                "schema": {
+                                    "type": "string",
+                                    "example": "flight-analyses"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -2283,6 +2599,313 @@
                     "expiry": {
                         "type": "integer",
                         "format": "unix-time"
+                    }
+                }
+            },
+            "LandingAnalysis": {
+                "type": "object",
+                "description": "smartCARS landing analysis (LandingAnalysisSchema in the app). Stored as JSON; only the fields named here are read by this API, the rest is passed through.",
+                "required": [
+                    "runway",
+                    "touchdown",
+                    "overall"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                    "runway": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                            "icao": {
+                                "type": "string"
+                            },
+                            "name": {
+                                "type": "string"
+                            },
+                            "endHeadingTrueDeg": {
+                                "type": "number"
+                            },
+                            "lengthM": {
+                                "type": "number"
+                            },
+                            "ldaM": {
+                                "type": "number",
+                                "description": "Landing distance available"
+                            },
+                            "displacedThresholdM": {
+                                "type": "number"
+                            },
+                            "surface": {
+                                "type": "string"
+                            },
+                            "surfaceCondition": {
+                                "type": "string",
+                                "enum": [
+                                    "unknown",
+                                    "normal",
+                                    "wet",
+                                    "icy",
+                                    "snow"
+                                ]
+                            },
+                            "sunElevationDeg": {
+                                "type": "number"
+                            },
+                            "elevationM": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            }
+                        }
+                    },
+                    "touchdown": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "required": [
+                            "rateFpm"
+                        ],
+                        "properties": {
+                            "rateFpm": {
+                                "type": "number",
+                                "description": "Stored in sc_flight_analyses.touchdown_rate_fpm"
+                            },
+                            "firmestRateFpm": {
+                                "type": "number"
+                            },
+                            "gForce": {
+                                "type": "number"
+                            },
+                            "iasKt": {
+                                "type": "number"
+                            },
+                            "gsKt": {
+                                "type": "number"
+                            },
+                            "pitchDeg": {
+                                "type": "number"
+                            },
+                            "bankDeg": {
+                                "type": "number"
+                            },
+                            "distanceFromThresholdM": {
+                                "type": "number",
+                                "description": "Signed; negative = short of the (displaced) threshold"
+                            }
+                        }
+                    },
+                    "overall": {
+                        "type": "string",
+                        "enum": [
+                            "excellent",
+                            "good",
+                            "fair",
+                            "poor"
+                        ],
+                        "description": "Stored in sc_flight_analyses.landing_grade"
+                    }
+                }
+            },
+            "FlightScore": {
+                "type": "object",
+                "description": "smartCARS flight score (FlightScoreSchema in the app): rule deductions plus the landing blend.",
+                "required": [
+                    "initial",
+                    "current",
+                    "penalties",
+                    "reliableFields",
+                    "landingPct",
+                    "blended"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                    "initial": {
+                        "type": "number"
+                    },
+                    "current": {
+                        "type": "number",
+                        "description": "initial minus every deduction, at least 0"
+                    },
+                    "penalties": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "reliableFields": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "landingPct": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "description": "Landing performance out of 100; null before the landing is scored"
+                    },
+                    "blended": {
+                        "type": "number",
+                        "description": "60% flight score + 40% landing performance. Stored in sc_flight_analyses.flight_score"
+                    }
+                }
+            },
+            "ApproachSample": {
+                "type": "object",
+                "description": "One sample of the approach or takeoff trail (ApproachSampleSchema in the app).",
+                "additionalProperties": true,
+                "properties": {
+                    "elapsedTimeSec": {
+                        "type": "number"
+                    },
+                    "latLon": {
+                        "type": "object",
+                        "properties": {
+                            "latitude": {
+                                "type": "number"
+                            },
+                            "longitude": {
+                                "type": "number"
+                            }
+                        }
+                    },
+                    "altAglFt": {
+                        "type": "number"
+                    },
+                    "altMslFt": {
+                        "type": "number"
+                    },
+                    "pitchDeg": {
+                        "type": "number"
+                    },
+                    "bankDeg": {
+                        "type": "number"
+                    },
+                    "vsFpm": {
+                        "type": "number"
+                    },
+                    "iasKt": {
+                        "type": "number"
+                    },
+                    "gsKt": {
+                        "type": "number"
+                    },
+                    "headingTrue": {
+                        "type": "number"
+                    },
+                    "headingMag": {
+                        "type": "number"
+                    },
+                    "onGround": {
+                        "type": "boolean"
+                    },
+                    "gForce": {
+                        "type": "number"
+                    },
+                    "windDirDeg": {
+                        "type": "number"
+                    },
+                    "windSpdKt": {
+                        "type": "number"
+                    }
+                }
+            },
+            "TakeoffAnalysis": {
+                "type": "object",
+                "description": "smartCARS takeoff analysis (TakeoffAnalysisSchema in the app). Stored as JSON and passed through.",
+                "additionalProperties": true,
+                "properties": {
+                    "window": {
+                        "type": "object",
+                        "properties": {
+                            "startElapsedSec": {
+                                "type": "number"
+                            },
+                            "endElapsedSec": {
+                                "type": "number"
+                            }
+                        }
+                    },
+                    "runway": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": true
+                    }
+                }
+            },
+            "FlightDebrief": {
+                "type": "object",
+                "description": "smartCARS flight debrief record (FlightDebriefRecordSchema in the app). Stored as JSON and passed through.",
+                "required": [
+                    "version",
+                    "source",
+                    "story"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                    "version": {
+                        "type": "integer",
+                        "enum": [
+                            1
+                        ]
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "'tracker' or 'pirep'"
+                    },
+                    "derivationVersion": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    },
+                    "story": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "departure": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "arrival": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "aircraft": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "flight": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "distanceNm": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    },
+                    "blockTimeSec": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    },
+                    "airTimeSec": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    },
+                    "fuelUsedLbs": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
                     }
                 }
             }

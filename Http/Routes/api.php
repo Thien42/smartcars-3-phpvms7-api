@@ -3,6 +3,7 @@ use \Modules\SmartCARS3phpVMS7Api\Http\Controllers\Api\PilotController;
 use \Modules\SmartCARS3phpVMS7Api\Http\Controllers\Api\DataController;
 use \Modules\SmartCARS3phpVMS7Api\Http\Controllers\Api\PirepsController;
 use \Modules\SmartCARS3phpVMS7Api\Http\Controllers\Api\FlightsController;
+use \Modules\SmartCARS3phpVMS7Api\Http\Controllers\Api\AnalysesController;
 use \Modules\SmartCARS3phpVMS7Api\Http\Middleware\SCAuth;
 use \Modules\SmartCARS3phpVMS7Api\Http\Middleware\SCHeaders;
 
@@ -33,6 +34,8 @@ Route::group(['middleware' => [SCHeaders::class]], function() {
             Route::match(['get', 'options', 'post'], '/details', 'details');
             Route::match(['get', 'options', 'post'], '/search', 'search');
             Route::match(['get', 'options', 'post'], '/latest', 'latest');
+            Route::match(['post', 'options'], '/analyses', [AnalysesController::class, 'upload'])->defaults('scCapability', 'flight-analyses');
+            Route::match(['post', 'options'], '/analyses/search', [AnalysesController::class, 'search'])->defaults('scCapability', 'flight-analyses');
         });
         Route::group(['prefix' => '/flights', 'controller' => FlightsController::class], function () {
             Route::match(['post', 'options'], '/book', 'book');

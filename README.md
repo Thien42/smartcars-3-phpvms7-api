@@ -69,3 +69,17 @@ Included with this API is a job that'll recalculate PIREP distances for all smar
 To execute this, navigate directly to `/admin/smartcars/recalc` in your web browser (e.g. `https://myva.com/admin/smartcars/recalc`) to start the recalculation job.
 
 If you have a private discord notification channel setup, you will receive progress updates regarding the status of the job as it executes on the backend.
+
+## Flight analyses
+
+smartCARS can upload the analyses of a finished flight (landing analysis, flight score, takeoff analysis, approach and takeoff trails, debrief). The module stores them in the `sc_flight_analyses` table, one row per PIREP, and answers `POST /pireps/analyses` (upload) and `POST /pireps/analyses/search` (lookup by PIREP IDs). Cancelling a flight deletes its row.
+
+Columns:
+
+- `pirep_id`: the PIREP the row belongs to (unique)
+- `user_id`: the pilot who uploaded it
+- `format_version`: version of the payload format, 1 today
+- `touchdown_rate_fpm`: touchdown rate in feet per minute, for reports and queries
+- `landing_grade`: `excellent`, `good`, `fair` or `poor`
+- `flight_score`: blended flight score out of 100
+- `landing_analysis`, `flight_score_detail`, `takeoff_analysis`, `debrief`, `approach_trail`, `takeoff_trail`: the full smartCARS payloads as JSON text, each can be null

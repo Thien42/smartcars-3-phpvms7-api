@@ -38,6 +38,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\SmartCARS3phpVMS7Api\Actions\PirepDistanceCalculation;
+use Modules\SmartCARS3phpVMS7Api\Models\FlightAnalysis;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
 use Modules\SmartCARS3phpVMS7Api\Providers\AppServiceProvider;
 
@@ -161,6 +162,7 @@ class FlightsController extends Controller
             SimBrief::where('pirep_id', $pirep->id)->update(['pirep_id' => null]);
             Acars::where('pirep_id', $pirep->id)->delete();
             PirepLog::where('pirep_id', $pirep->id)->delete();
+            FlightAnalysis::where('pirep_id', $pirep->id)->delete();
             $this->pirepService->delete($pirep);
         });
 
