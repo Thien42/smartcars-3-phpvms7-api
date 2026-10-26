@@ -575,7 +575,7 @@ class FlightsController extends Controller
     {
         $input = $request->all();
         // Check if there's an active flight under that bid.
-        $pirep = Pirep::find($input['uuid']);
+        $pirep = Pirep::where(['id' => $input['uuid'], 'user_id' => Auth::id()])->first();
         // if no pirep, return a 404
         if ($pirep === null) {
             return response()->json(['message' => 'No active flight'], 404);
@@ -600,7 +600,7 @@ class FlightsController extends Controller
                 $pirep->status == PirepStatus::ARRIVED
             ) &&
             $pirep->block_on_time == null) {
-            $pirep->block_on_time == Carbon::now();
+            $pirep->block_on_time = Carbon::now();
         }
 
         if (
