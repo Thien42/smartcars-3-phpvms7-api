@@ -7,7 +7,6 @@ use App\Models\Enums\PirepState;
 use App\Models\Acars;
 use App\Models\Pirep;
 use App\Models\PirepComment;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
@@ -28,10 +27,10 @@ class PirepsController extends Controller
      */
     public function details(Request $request)
     {
-        $pirepID = $request->get('id');
-        $user_id = $request->get('pilotID');
-
-        $pirep = Pirep::find($pirepID);
+        $pirep = Pirep::where(['id' => $request->get('id'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['message' => 'PIREP not found'], 404);
+        }
         $pirep->load('comments', 'acars');
 
         return response()->json([
@@ -48,7 +47,7 @@ class PirepsController extends Controller
      */
     public function search(Request $request)
     {
-        $user = User::find($request->get('pilotID'));
+        $user = Auth::user();
         $user->load('pireps', 'pireps.airline');
         $output_pireps = [];
         foreach ($user->pireps->sortByDesc('created_at') as $pirep) {
