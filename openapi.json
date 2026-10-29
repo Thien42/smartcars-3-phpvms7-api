@@ -156,7 +156,7 @@
         "/flights/search/arrivals": {
             "post": {
                 "summary": "Search Flights",
-                "description": "Search for flights across three dimensions: any of several departure airports, optionally any of several arrival airports, and optionally any of several aircraft. Results are ordered by distance, shortest first, and capped at 200. When perArrivalLimit is given, at most that many flights are kept per arrival airport before the overall limit is applied. When the only-flights-from-current-airport setting is on, the pilot's current airport is used as the only departure, whatever the request says.",
+                "description": "Search for flights across three dimensions: any of several departure airports, optionally any of several arrival airports, and optionally any of several aircraft. Results are ordered by distance, shortest first, and capped at 250. When perArrivalLimit is given, at most that many flights are kept per arrival airport before the overall limit is applied. When the only-flights-from-current-airport setting is on, the pilot's current airport is used as the only departure, whatever the request says.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -213,8 +213,8 @@
                                     "limit": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "maximum": 200,
-                                        "default": 200,
+                                        "maximum": 250,
+                                        "default": 250,
                                         "description": "The maximum number of flights to return"
                                     },
                                     "perArrivalLimit": {
