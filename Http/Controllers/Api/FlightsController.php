@@ -414,46 +414,79 @@ class FlightsController extends Controller
     }
     public function searchArrivals(Request $request)
     {
-        $departure = $request->input('departureAirport');
-        if (!is_string($departure) || $departure === '') {
-            return response()->json(['message' => 'departureAirport is required'], 400);
-        }
-        $arrivals = $request->input('arrivalAirports');
-        if (!is_array($arrivals) || empty($arrivals)) {
-            return response()->json(['message' => 'arrivalAirports must be a non-empty array'], 400);
+        $departures = $request->input('departureAirports');
+        if (!is_array($departures) || empty($departures)) {
+            return response()->json(['message' => 'departureAirports must be a non-empty array'], 400);
         }
 
         if (setting('pilots.only_flights_from_current')) {
-            $departureId = $request->user()->curr_airport_id;
+            $departureIds = [$request->user()->curr_airport_id];
         } else {
-            $apt = Airport::where('icao', $departure)->first();
-            if (is_null($apt)) {
+            $departureIds = Airport::whereIn('icao', array_values(array_filter($departures, 'is_string')))->pluck('id')->all();
+            if (empty($departureIds)) {
                 return response()->json([]);
             }
-            $departureId = $apt->id;
         }
 
-        $arrivalIds = Airport::whereIn('icao', array_values(array_filter($arrivals, 'is_string')))->pluck('id');
-        if ($arrivalIds->isEmpty()) {
-            return response()->json([]);
+        $query = Flight::whereIn('dpt_airport_id', $departureIds)
+            ->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')
+            ->where($this->rangeConditions(
+                $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
+            ))
+            ->where('visible', true);
+
+        $arrivals = $request->input('arrivalAirports');
+        if (is_array($arrivals) && !empty($arrivals)) {
+            $arrivalIds = Airport::whereIn('icao', array_values(array_filter($arrivals, 'is_string')))->pluck('id');
+            if ($arrivalIds->isEmpty()) {
+                return response()->json([]);
+            }
+            $query->whereIn('arr_airport_id', $arrivalIds);
+        }
+
+        $aircraft = $request->input('aircraft');
+        if (is_array($aircraft) && !empty($aircraft)) {
+            $aircraftIds = array_map('intval', array_filter($aircraft, 'is_numeric'));
+            if (empty($aircraftIds)) {
+                return response()->json([]);
+            }
+            $query->whereHas('subfleets.aircraft', function ($q) use ($aircraftIds) {
+                $q->whereIn('aircraft.id', $aircraftIds);
+            });
         }
 
         $limit = (int)$request->input('limit', self::ARRIVAL_SEARCH_LIMIT);
         if ($limit < 1 || $limit > self::ARRIVAL_SEARCH_LIMIT) {
             $limit = self::ARRIVAL_SEARCH_LIMIT;
         }
+        $perArrivalLimit = (int)$request->input('perArrivalLimit', 0);
 
-        $flights = Flight::where('dpt_airport_id', $departureId)
-            ->whereIn('arr_airport_id', $arrivalIds)
-            ->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')
-            ->where($this->rangeConditions(
-                $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
-            ))
-            ->where('visible', true)
-            ->with('subfleets', 'subfleets.aircraft', 'airline')
-            ->orderBy('distance')
-            ->take($limit)
-            ->get();
+        $query->orderBy('distance');
+
+        if ($perArrivalLimit >= 1) {
+            // cursor() skips eager loading, so the kept flights are reloaded with their relations below
+            $countsByArrival = [];
+            $ids = [];
+            foreach ($query->cursor() as $candidate) {
+                $arrivalId = $candidate->arr_airport_id;
+                $countsByArrival[$arrivalId] = ($countsByArrival[$arrivalId] ?? 0) + 1;
+                if ($countsByArrival[$arrivalId] > $perArrivalLimit) {
+                    continue;
+                }
+                $ids[] = $candidate->id;
+                if (count($ids) >= $limit) {
+                    break;
+                }
+            }
+            $position = array_flip($ids);
+            $flights = Flight::whereIn('id', $ids)
+                ->with('subfleets', 'subfleets.aircraft', 'airline')
+                ->get()
+                ->sortBy(fn ($flight) => $position[$flight->id])
+                ->values();
+        } else {
+            $flights = $query->with('subfleets', 'subfleets.aircraft', 'airline')->take($limit)->get();
+        }
 
         $output = [];
         foreach ($flights as $flight) {
