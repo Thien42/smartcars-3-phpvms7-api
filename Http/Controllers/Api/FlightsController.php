@@ -13,6 +13,7 @@ use App\Models\Airline;
 use App\Models\Airport;
 use App\Models\Bid;
 use App\Models\Enums\AcarsType;
+use App\Models\Enums\AircraftState;
 use App\Models\Enums\AircraftStatus;
 use App\Models\Enums\Days;
 use App\Models\Enums\FareType;
@@ -32,6 +33,7 @@ use App\Services\BidService;
 use App\Services\FareService;
 use App\Services\FlightService;
 use App\Services\PirepService;
+use App\Services\UserService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -53,6 +55,12 @@ class FlightsController extends Controller
     private const SEARCH_LIMIT = 250;
     private const ARRIVAL_SEARCH_LIMIT = 250;
     private const DIVERSION_FIELD_SLUG = 'diversion-airport';
+    private const NETWORK_FIELD_SLUG = 'network';
+    private const NETWORK_FIELD_NAME = 'Network';
+    private const SIMULATOR_FIELD_SLUG = 'simulator';
+    private const SIMULATOR_FIELD_NAME = 'Simulator';
+    private const FIELD_VALUE_MAX_LENGTH = 255;
+    private const LBS_PER_KG = 2.20462;
     private const DAY_NAMES = [
         Days::MONDAY    => 'Monday',
         Days::TUESDAY   => 'Tuesday',
@@ -384,11 +392,208 @@ class FlightsController extends Controller
             'pirep_id' => $pirep->id,
             'log'      => gzencode(json_encode($input['flightData']))
         ]);
-        $pirep->distance = PirepDistanceCalculation::calculatePirepDistance($pirep);
+        $distanceFlown = $this->positiveNumber($input['distanceFlown'] ?? null);
+        $pirep->distance = $distanceFlown ?? PirepDistanceCalculation::calculatePirepDistance($pirep);
+        $this->applyFiledValues($pirep, $input);
+        try {
+            $this->applyAircraftChange($pirep, $input['aircraft'] ?? null);
+        } catch (\Throwable $e) {
+            Log::error('smartCARS: could not check the aircraft change of PIREP '.$pirep->id.': '.$e->getMessage());
+        }
         $pirep->save();
+        // The PIREP is already saved as pending: a failure here must not stop the submit below
+        try {
+            $this->applyFiledLoads($pirep, $input);
+        } catch (\Throwable $e) {
+            Log::error('smartCARS: could not save the filed loads of PIREP '.$pirep->id.': '.$e->getMessage());
+        }
+        try {
+            $this->saveFiledFields($pirep, $input);
+        } catch (\Throwable $e) {
+            Log::error('smartCARS: could not save the fields of PIREP '.$pirep->id.': '.$e->getMessage());
+        }
+        try {
+            if (!Acars::where(['pirep_id' => $pirep->id, 'type' => AcarsType::ROUTE])->exists()) {
+                $this->pirepService->saveRoute($pirep);
+            }
+        } catch (\Throwable $e) {
+            Log::error('smartCARS: could not save the route of PIREP '.$pirep->id.': '.$e->getMessage());
+        }
         $this->pirepService->submit($pirep);
         return response()->json(['pirepID' => $pirep->id]);
 
+    }
+    private function applyFiledValues(Pirep $pirep, array $input): void
+    {
+        $score = $this->finiteNumber($input['score'] ?? null);
+        if ($score !== null && $score >= 0 && $score <= 100) {
+            $pirep->score = (int) round($score);
+        }
+        $cruiseLevel = $this->positiveNumber($input['cruiseLevel'] ?? null);
+        if ($cruiseLevel !== null) {
+            $pirep->level = (int) round($cruiseLevel);
+        }
+        $blockFuel = $this->positiveNumber($input['blockFuel'] ?? null);
+        if ($blockFuel !== null) {
+            $pirep->block_fuel = $blockFuel;
+        }
+        $zfw = $this->positiveNumber($input['zfw'] ?? null);
+        if ($zfw !== null) {
+            $pirep->zfw = $zfw;
+        }
+        $blockTimeHours = $this->positiveNumber($input['blockTime'] ?? null);
+        if ($blockTimeHours !== null) {
+            $pirep->block_time = (int) round($blockTimeHours * 60);
+        }
+
+        $blockOff = $this->utcTime($input['blockOffTime'] ?? null);
+        $blockOn = $this->utcTime($input['blockOnTime'] ?? null);
+        if ($blockOff !== null && $blockOn !== null && $blockOff->greaterThan($blockOn)) {
+            Log::warning('smartCARS: PIREP '.$pirep->id.' block off time is after its block on time, both ignored');
+            return;
+        }
+        if ($blockOff !== null) {
+            $pirep->block_off_time = $blockOff;
+        }
+        if ($blockOn !== null) {
+            $pirep->block_on_time = $blockOn;
+        }
+    }
+    private function applyAircraftChange(Pirep $pirep, $aircraftId): void
+    {
+        if (!is_numeric($aircraftId) || (int) $aircraftId === (int) $pirep->aircraft_id) {
+            return;
+        }
+        $aircraftId = (int) $aircraftId;
+        $reason = $this->aircraftChangeRefusal($pirep, $aircraftId);
+        if ($reason !== null) {
+            Log::info('smartCARS: PIREP '.$pirep->id.' keeps aircraft '.$pirep->aircraft_id.' instead of '.$aircraftId.': '.$reason);
+            return;
+        }
+        $pirep->aircraft_id = $aircraftId;
+        $pirep->unsetRelation('aircraft');
+    }
+    private function aircraftChangeRefusal(Pirep $pirep, int $aircraftId): ?string
+    {
+        $aircraft = Aircraft::find($aircraftId);
+        if ($aircraft === null) {
+            return 'it does not exist';
+        }
+        if (!app(UserService::class)->aircraftAllowed($pirep->user, $aircraftId)) {
+            return 'the pilot may not fly its subfleet';
+        }
+        if ($aircraft->state !== AircraftState::PARKED) {
+            return 'it is not parked';
+        }
+        $isOnAnotherFlight = Pirep::where('aircraft_id', $aircraftId)
+            ->where('id', '!=', $pirep->id)
+            ->whereIn('state', [PirepState::IN_PROGRESS, PirepState::PAUSED])
+            ->exists();
+        if ($isOnAnotherFlight) {
+            return 'it is on another flight in progress';
+        }
+        if (setting('simbrief.block_aircraft', false)) {
+            $isBriefedForAnotherPilot = SimBrief::where('aircraft_id', $aircraftId)
+                ->where('user_id', '!=', $pirep->user_id)
+                ->whereNotNull('flight_id')
+                ->exists();
+            if ($isBriefedForAnotherPilot) {
+                return 'another pilot has an active SimBrief briefing for it';
+            }
+        }
+        if (setting('bids.block_aircraft', false)) {
+            $isBookedByAnotherPilot = Bid::where('aircraft_id', $aircraftId)
+                ->where('user_id', '!=', $pirep->user_id)
+                ->exists();
+            if ($isBookedByAnotherPilot) {
+                return 'another pilot has booked it';
+            }
+        }
+        return null;
+    }
+    private function applyFiledLoads(Pirep $pirep, array $input): void
+    {
+        $passengers = $this->finiteNumber($input['passengers'] ?? null);
+        $passengers = $passengers !== null && $passengers >= 0 && floor($passengers) === $passengers
+            ? (int) $passengers
+            : null;
+        $cargo = $this->finiteNumber($input['cargo'] ?? null);
+        if ($cargo !== null && $cargo >= 0) {
+            // phpVMS counts cargo fares in the VA's display weight unit, as its SimBrief form does
+            $cargo = (int) round(setting('units.weight') === 'kg' ? $cargo / self::LBS_PER_KG : $cargo);
+        } else {
+            $cargo = null;
+        }
+        if ($passengers === null && $cargo === null) {
+            return;
+        }
+
+        $pirep->refresh();
+        $allFares = $this->fareService->getAllFares($pirep->flight, $pirep->aircraft->subfleet);
+        $totals = [FareType::PASSENGER => $passengers, FareType::CARGO => $cargo];
+        $existing = PirepFare::where('pirep_id', $pirep->id)->get();
+
+        $fares = [];
+        foreach ([FareType::PASSENGER, FareType::CARGO] as $type) {
+            $typeFares = $allFares->filter(fn ($fare) => $fare->type === $type && $fare->capacity > 0)->values();
+            if ($totals[$type] === null || $typeFares->isEmpty()) {
+                if ($totals[$type] !== null) {
+                    Log::info('smartCARS: PIREP '.$pirep->id.' has no '.($type === FareType::PASSENGER ? 'passenger' : 'cargo').' fare for the filed load');
+                }
+                foreach ($allFares->filter(fn ($fare) => $fare->type === $type) as $fare) {
+                    $kept = $existing->first(fn ($row) => $row->code === $fare->code && (int) $row->type === $type);
+                    if ($kept !== null) {
+                        $fares[] = new PirepFare(['fare_id' => $fare->id, 'count' => $kept->count]);
+                    }
+                }
+                continue;
+            }
+            $counts = $this->splitByCapacity($totals[$type], $typeFares->pluck('capacity')->all());
+            foreach ($typeFares as $index => $fare) {
+                $fares[] = new PirepFare(['fare_id' => $fare->id, 'count' => $counts[$index]]);
+            }
+        }
+        $this->fareService->saveToPirep($pirep, $fares);
+    }
+    /**
+     * Largest remainder split, so the counts are integers that add up to the total
+     */
+    private function splitByCapacity(int $total, array $capacities): array
+    {
+        $capacitySum = array_sum($capacities);
+        $counts = [];
+        $remainders = [];
+        foreach ($capacities as $index => $capacity) {
+            $share = $total * $capacity / $capacitySum;
+            $counts[$index] = (int) floor($share);
+            $remainders[$index] = $share - $counts[$index];
+        }
+        arsort($remainders);
+        $left = $total - array_sum($counts);
+        foreach (array_keys($remainders) as $index) {
+            if ($left <= 0) {
+                break;
+            }
+            $counts[$index]++;
+            $left--;
+        }
+        return $counts;
+    }
+    private function saveFiledFields(Pirep $pirep, array $input): void
+    {
+        $values = [
+            self::NETWORK_FIELD_SLUG   => [self::NETWORK_FIELD_NAME, $input['network'] ?? null],
+            self::SIMULATOR_FIELD_SLUG => [self::SIMULATOR_FIELD_NAME, $input['simVersion'] ?? null],
+        ];
+        foreach ($values as $slug => [$name, $value]) {
+            if (!is_string($value) || trim($value) === '') {
+                continue;
+            }
+            PirepFieldValue::updateOrCreate(
+                ['pirep_id' => $pirep->id, 'slug' => $slug],
+                ['name' => $name, 'value' => Str::limit(trim($value), self::FIELD_VALUE_MAX_LENGTH, ''), 'source' => PirepFieldSource::ACARS]
+            );
+        }
     }
     public function search(Request $request)
     {
@@ -625,7 +830,9 @@ class FlightsController extends Controller
                 Log::warning($e->getMessage());
                 return response()->json(['message' => $e->getMessage()], 409);
             }
-            $this->generateFares(Aircraft::find($aircraft), $flight, $pirep);
+            if (!$this->saveBriefedFares($simbrief, $aircraft, $pirep)) {
+                $this->generateFares(Aircraft::find($aircraft), $flight, $pirep);
+            }
         } catch (\Throwable $e) {
             // parse the exception to present it cleanly to the user the reason for the error
             Log::error($e);
@@ -804,6 +1011,42 @@ class FlightsController extends Controller
                 return PirepStatus::DIVERTED;
             default:
                 return null;
+        }
+    }
+    /**
+     * phpVMS rolls the loads when the pilot generates a SimBrief briefing but never copies them to the PIREP
+     */
+    private function saveBriefedFares(?SimBrief $simbrief, $aircraftId, Pirep $pirep): bool
+    {
+        if ($simbrief === null || (int) $simbrief->aircraft_id !== (int) $aircraftId) {
+            return false;
+        }
+        try {
+            $briefed = json_decode((string) $simbrief->fare_data, true);
+            if (!is_array($briefed)) {
+                return false;
+            }
+            $allFares = $this->fareService->getAllFares($pirep->flight, $pirep->aircraft->subfleet);
+            $fares = [];
+            foreach ($briefed as $entry) {
+                if (!is_array($entry) || !is_numeric($entry['id'] ?? null) || !is_numeric($entry['count'] ?? null)) {
+                    continue;
+                }
+                $fareId = (int) $entry['id'];
+                $count = (int) $entry['count'];
+                if ($count < 0 || isset($fares[$fareId]) || $allFares->firstWhere('id', $fareId) === null) {
+                    continue;
+                }
+                $fares[$fareId] = new PirepFare(['fare_id' => $fareId, 'count' => $count]);
+            }
+            if (empty($fares)) {
+                return false;
+            }
+            $this->fareService->saveToPirep($pirep, array_values($fares));
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('smartCARS: could not use the SimBrief loads for PIREP '.$pirep->id.': '.$e->getMessage());
+            return false;
         }
     }
     private function generateFares($aircraft, $flight, $pirep)
