@@ -1,7 +1,7 @@
 {
     "openapi": "3.1.0",
     "info": {
-        "version": "1.6.0",
+        "version": "1.7.0",
         "title": "smartCARS 3 Public API"
     },
     "paths": {
@@ -35,7 +35,7 @@
                                         },
                                         "capabilities": {
                                             "type": "array",
-                                            "description": "The optional features this backend supports (flight-analyses, arrival-search, iata-flight-types and, while their setting is enabled, divert and auto-update), the same names as the X-SmartCARS-Capability response header. A feature gated by a setting is listed only while the setting is enabled.",
+                                            "description": "The optional features this backend supports (flight-analyses, flight-events, arrival-search, iata-flight-types and, while their setting is enabled, divert and auto-update), the same names as the X-SmartCARS-Capability response header. A feature gated by a setting is listed only while the setting is enabled.",
                                             "items": {
                                                 "type": "string"
                                             }
@@ -1217,6 +1217,149 @@
                                 "schema": {
                                     "type": "string",
                                     "example": "divert"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/flights/events": {
+            "post": {
+                "summary": "Flight Events",
+                "description": "Store flight log lines while the flight is in progress, before it is filed. Each line becomes a phpVMS ACARS log row (type LOG) of the PIREP, shown in the flight log on the PIREP page and in the admin, with the line's message (cut to 255 characters) and its timestamp as the row's time. The row ID is derived from the PIREP ID and the line's index, so the request is idempotent: a line sent again with an index already stored is ignored and the first stored text and time stay. At /flights/complete, a flightData item whose eventId matches an index already stored is not stored a second time; the other items are stored as before. A batch is checked as a whole: one invalid entry refuses the whole request and stores nothing.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "uuid",
+                                    "events"
+                                ],
+                                "properties": {
+                                    "uuid": {
+                                        "type": "string",
+                                        "description": "The PIREP ID (a phpVMS hash ID) of the ongoing flight"
+                                    },
+                                    "bidID": {
+                                        "oneOf": [
+                                            {
+                                                "type": "integer",
+                                                "format": "int32"
+                                            },
+                                            {
+                                                "type": "string"
+                                            }
+                                        ],
+                                        "description": "The booking of the flight; accepted but not used"
+                                    },
+                                    "events": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "maxItems": 100,
+                                        "description": "The log lines, at most 100 per request",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "index",
+                                                "type",
+                                                "message",
+                                                "timestamp"
+                                            ],
+                                            "properties": {
+                                                "index": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "The line's 0-based position in the flight log, the same number the line has as eventId in the flightData filed with /flights/complete"
+                                                },
+                                                "type": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "info",
+                                                        "event",
+                                                        "comment"
+                                                    ],
+                                                    "description": "The kind of line; checked, not stored"
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "description": "The line's text, the flightData item's message; stored cut to 255 characters"
+                                                },
+                                                "timestamp": {
+                                                    "type": "string",
+                                                    "description": "The line's UTC time, the flightData item's eventTimestamp (e.g. 2026-11-06 14:05:00z)"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "200 - The lines were stored (lines already stored are left as they are)"
+                    },
+                    "401": {
+                        "description": "401 - Invalid session",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/UnauthorizedError"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "404 - No such flight for this pilot",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "409 - The flight is not in progress (already filed or cancelled)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "422 - events is not an array, is empty or has more than 100 entries, or an entry lacks an integer index >= 0, a type of info, event or comment, a string message or a parseable timestamp",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "options": {
+                "summary": "Flight Events Capability",
+                "description": "Lets clients detect whether this API stores flight log lines during the flight.",
+                "responses": {
+                    "200": {
+                        "description": "200 - Flight events are supported when the header is present",
+                        "headers": {
+                            "X-SmartCARS-Capability": {
+                                "description": "Comma-separated list of capabilities of this route; contains flight-events",
+                                "schema": {
+                                    "type": "string",
+                                    "example": "flight-events"
                                 }
                             }
                         }

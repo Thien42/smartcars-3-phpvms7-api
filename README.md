@@ -110,6 +110,20 @@ At filing the module also saves the planned route rows from the PIREP's route (p
 
 At start, when the pilot generated a SimBrief briefing in phpVMS for the flight with the started aircraft, the module saves the loads phpVMS rolled for that briefing (`simbrief.fare_data`) as the PIREP's fares. Otherwise it rolls the loads from the load factors, as before.
 
+## Flight events
+
+A client may send the flight log lines while the flight is in progress with `POST /flights/events`, so they show in the flight log on the PIREP page and in the admin before the flight is filed. The body is `{ uuid, bidID, events: [ { index, type, message, timestamp } ] }`:
+
+- `uuid`: the PIREP ID of the ongoing flight (`bidID` is accepted and not used)
+- `index` (integer, >= 0): the line's 0-based position in the flight log, the same number the line has as `eventId` in the `flightData` filed with `flights/complete`
+- `type`: `info`, `event` or `comment`; checked, not stored
+- `message` (text): the line, stored cut to 255 characters (phpVMS's `acars.log` column)
+- `timestamp`: the line's UTC time, the `flightData` item's `eventTimestamp` (e.g. `2026-11-06 14:05:00z`), parsed as at filing
+
+Each line becomes a phpVMS ACARS row of type LOG for the PIREP, with the timestamp as its `created_at`. The row ID is derived from the PIREP ID and `index`, so the request is idempotent: a line sent again is ignored and the row stored first stays. At `flights/complete`, a `flightData` item whose `eventId` matches a stored line is not stored again; every other item is stored as before, so a client that never calls `flights/events` sees no change. The raw `flightData` copy in `sc_pirep_logs` is kept in full either way.
+
+A request carries at most 100 lines. Answers: 200 when stored, 401 for an invalid session, 404 when the pilot has no such flight, 409 when the flight is no longer in progress or paused (filed or cancelled), and 422 when `events` is not an array, is empty or has more than 100 entries, or an entry lacks an integer `index` >= 0, a valid `type`, a text `message` or a parseable `timestamp`. A batch is checked as a whole: one invalid entry stores nothing.
+
 ## Flight analyses
 
 smartCARS can upload the analyses of a finished flight (landing analysis, flight score, takeoff analysis, approach and takeoff trails, debrief). The module stores them in the `sc_flight_analyses` table, one row per PIREP, and answers `POST /pireps/analyses` (upload) and `POST /pireps/analyses/search` (lookup by PIREP IDs). Cancelling a flight deletes its row when the cancelled flights setting is `delete`.
@@ -126,7 +140,7 @@ Columns:
 
 ## Capabilities
 
-`GET /` also answers `capabilities`, the optional features this backend supports (today `flight-analyses`, `arrival-search`, `iata-flight-types` (clients sending a `smartCARS/<major>` User-Agent with major 4 or later get the phpVMS flight type letter as stored in the flight `type`; other clients get P or C), while the `pireps.handle_diversion` setting is enabled `divert`, and while auto-update is enabled `auto-update`). Each endpoint behind one also names it in the `X-SmartCARS-Capability` response header. Both come from the `scCapability` default on the route, so a new capability is declared once, on its route.
+`GET /` also answers `capabilities`, the optional features this backend supports (today `flight-analyses`, `flight-events`, `arrival-search`, `iata-flight-types` (clients sending a `smartCARS/<major>` User-Agent with major 4 or later get the phpVMS flight type letter as stored in the flight `type`; other clients get P or C), while the `pireps.handle_diversion` setting is enabled `divert`, and while auto-update is enabled `auto-update`). Each endpoint behind one also names it in the `X-SmartCARS-Capability` response header. Both come from the `scCapability` default on the route, so a new capability is declared once, on its route.
 
 ## Auto-update
 

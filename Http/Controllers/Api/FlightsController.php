@@ -82,6 +82,11 @@ class FlightsController extends Controller
         PirepStatus::APPROACH_ICAO,
         PirepStatus::LANDING,
     ];
+    private const FLIGHT_EVENTS_MAX = 100;
+    private const FLIGHT_EVENT_TYPES = ['info', 'event', 'comment'];
+    private const FLIGHT_EVENT_ID_PREFIX = 'scev';
+    private const FLIGHT_EVENT_ID_HASH_LENGTH = 32;
+    private const ACARS_LOG_MAX_LENGTH = 255;
 
     public function __construct(
         public FlightService $flightService,
@@ -255,6 +260,77 @@ class FlightsController extends Controller
 
         return response()->json(['status' => 200]);
     }
+
+    public function events(Request $request)
+    {
+        $pirep = Pirep::where(['id' => $request->input('uuid'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['message' => 'No active flight'], 404);
+        }
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED], true)) {
+            return response()->json(['message' => 'This flight is not in progress'], 409);
+        }
+
+        $events = $request->input('events');
+        if (!is_array($events) || !array_is_list($events) || count($events) === 0 || count($events) > self::FLIGHT_EVENTS_MAX) {
+            return response()->json(['message' => 'events must be a non-empty array of at most '.self::FLIGHT_EVENTS_MAX.' entries'], 422);
+        }
+
+        $now = Carbon::now('UTC');
+        $rows = [];
+        foreach ($events as $event) {
+            $createdAt = is_array($event) ? $this->flightEventTime($event['timestamp'] ?? null) : null;
+            $eventId = is_array($event) && is_int($event['index'] ?? null) ? $this->flightEventId($pirep->id, $event['index']) : null;
+            if (
+                $eventId === null
+                || !in_array($event['type'] ?? null, self::FLIGHT_EVENT_TYPES, true)
+                || !is_string($event['message'] ?? null)
+                || $createdAt === null
+            ) {
+                return response()->json(['message' => 'Each event needs an integer index >= 0, a type of info, event or comment, a string message and a timestamp'], 422);
+            }
+            $rows[] = [
+                'id'         => $eventId,
+                'pirep_id'   => $pirep->id,
+                'type'       => AcarsType::LOG,
+                'log'        => mb_substr($event['message'], 0, self::ACARS_LOG_MAX_LENGTH),
+                'created_at' => $createdAt,
+                'updated_at' => $now,
+            ];
+        }
+        // First write wins: a resent line keeps the row stored the first time
+        Acars::insertOrIgnore($rows);
+
+        return response()->json(['status' => 200]);
+    }
+
+    private function flightEventId(string $pirepId, $index): ?string
+    {
+        if (is_string($index) && ctype_digit($index)) {
+            $index = (int) $index;
+        }
+        if (!is_int($index) || $index < 0) {
+            return null;
+        }
+        // acars.id is a 36-character string; the prefix keeps these ids apart from phpVMS's own hash ids and UUIDs
+        return self::FLIGHT_EVENT_ID_PREFIX.substr(hash('sha256', $pirepId.':'.$index), 0, self::FLIGHT_EVENT_ID_HASH_LENGTH);
+    }
+
+    private function flightEventTime($value): ?Carbon
+    {
+        if (!is_string($value) || strtotime($value) === false) {
+            return null;
+        }
+        try {
+            // The same parse as the flightData rows at filing, so a line gets the same time from either path
+            $time = Carbon::createFromTimeString($value);
+        } catch (\Throwable $e) {
+            // An unparseable timestamp is the caller's error, answered with a 422
+            return null;
+        }
+        return $time instanceof Carbon ? $time : null;
+    }
+
     public function charter(Request $request)
     {
         $flight_num = $request->number;
@@ -351,12 +427,17 @@ class FlightsController extends Controller
         $pirep->flight_time = $input['flightTime'] * 60;
         $pirep->route = $input['route'] ? join(" ", $input['route']) : '';
         $pirep->submitted_at = Carbon::now('UTC');
+        $storedLogIds = Acars::where(['pirep_id' => $pirep->id, 'type' => AcarsType::LOG])->pluck('id')->flip();
         foreach ($input['flightData'] as $data) {
-            $log_item = new Acars();
-            $log_item->type = AcarsType::LOG;
-            $log_item->log = $data['message'];
-            $log_item->created_at = Carbon::createFromTimeString($data['eventTimestamp']);
-            $pirep->acars_logs()->save($log_item);
+            // A line already stored by flights/events keeps its row
+            $eventId = $this->flightEventId($pirep->id, $data['eventId'] ?? null);
+            if ($eventId === null || !$storedLogIds->has($eventId)) {
+                $log_item = new Acars();
+                $log_item->type = AcarsType::LOG;
+                $log_item->log = $data['message'];
+                $log_item->created_at = Carbon::createFromTimeString($data['eventTimestamp']);
+                $pirep->acars_logs()->save($log_item);
+            }
             // hotfix for block fuel. Replace this code when block fuel is properly implemented in smartCARS
             if (str_contains($data['message'], "Pushing back with")) {
                 // example: "Pushing back with 1000 lbs of fuel"
