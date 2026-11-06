@@ -11,6 +11,7 @@ use App\Models\Enums\FlightType;
 use App\Models\News;
 use App\Models\Subfleet;
 use Illuminate\Http\Request;
+use Modules\SmartCARS3phpVMS7Api\Support\ScSettings;
 
 /**
  * class ApiController
@@ -46,7 +47,7 @@ class DataController extends Controller
             $output[] = [
                 "id" => $item->id,
                 "code" => $item->icao,
-                "name" => "{$item->name} ({$item->registration}) | ".AircraftStatus::label($item->status),
+                "name" => ScSettings::aircraftName($item),
                 "status" => AircraftStatus::label($item->status),
                 "serviceCeiling" => "40000",
                 "maximumPassengers" => 300,
@@ -76,6 +77,9 @@ class DataController extends Controller
     public function news(Request $request)
     {
         $news = News::latest()->first();
+        if ($news === null) {
+            return response()->json(['title' => null, 'body' => null, 'postedAt' => null, 'postedBy' => null]);
+        }
         return response()->json([
             'title' => $news->subject,
             'body' => $news->body,

@@ -4,6 +4,7 @@ namespace Modules\SmartCARS3phpVMS7Api\Http\Controllers\Api;
 
 use App\Contracts\Controller;
 use App\Events\PirepPrefiled;
+use App\Exceptions\AbstractHttpException;
 use App\Exceptions\AirportNotFound;
 use App\Exceptions\UserNotAtAirport;
 use App\Models\Acars;
@@ -13,8 +14,10 @@ use App\Models\Airport;
 use App\Models\Bid;
 use App\Models\Enums\AcarsType;
 use App\Models\Enums\AircraftStatus;
+use App\Models\Enums\Days;
 use App\Models\Enums\FareType;
 use App\Models\Enums\FlightType;
+use App\Models\Enums\PirepFieldSource;
 use App\Models\Enums\PirepSource;
 use App\Models\Enums\PirepState;
 use App\Models\Enums\PirepStatus;
@@ -22,7 +25,8 @@ use App\Models\Fare;
 use App\Models\Flight;
 use App\Models\Pirep;
 use App\Models\PirepFare;
-use App\Models\Subfleet;
+use App\Models\PirepFieldValue;
+use App\Models\SimBrief;
 use App\Models\User;
 use App\Services\BidService;
 use App\Services\FareService;
@@ -31,11 +35,14 @@ use App\Services\PirepService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\SmartCARS3phpVMS7Api\Actions\PirepDistanceCalculation;
+use Modules\SmartCARS3phpVMS7Api\Models\FlightAnalysis;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
 use Modules\SmartCARS3phpVMS7Api\Providers\AppServiceProvider;
+use Modules\SmartCARS3phpVMS7Api\Support\ScSettings;
 
 /**
  * class ApiController
@@ -43,6 +50,31 @@ use Modules\SmartCARS3phpVMS7Api\Providers\AppServiceProvider;
  */
 class FlightsController extends Controller
 {
+    private const SEARCH_LIMIT = 250;
+    private const ARRIVAL_SEARCH_LIMIT = 250;
+    private const DIVERSION_FIELD_SLUG = 'diversion-airport';
+    private const DAY_NAMES = [
+        Days::MONDAY    => 'Monday',
+        Days::TUESDAY   => 'Tuesday',
+        Days::WEDNESDAY => 'Wednesday',
+        Days::THURSDAY  => 'Thursday',
+        Days::FRIDAY    => 'Friday',
+        Days::SATURDAY  => 'Saturday',
+        Days::SUNDAY    => 'Sunday',
+    ];
+    private const USER_AGENT_VERSION_PATTERN = '#^smartCARS/(\d+)#';
+    private const IATA_FLIGHT_TYPES_MIN_MAJOR = 4;
+    private const SOURCE_NAME_PREFIX = 'smartCARS ';
+    private const SOURCE_NAME_DEFAULT = 'smartCARS 3';
+    private const AIRBORNE_STATUSES = [
+        PirepStatus::TAKEOFF,
+        PirepStatus::INIT_CLIM,
+        PirepStatus::ENROUTE,
+        PirepStatus::APPROACH,
+        PirepStatus::APPROACH_ICAO,
+        PirepStatus::LANDING,
+    ];
+
     public function __construct(
         public FlightService $flightService,
         public FareService $fareService,
@@ -71,9 +103,34 @@ class FlightsController extends Controller
         }
         return response()->json(["bidID" => $bid->id]);
     }
+    private function clientMajorVersion(Request $request): ?int
+    {
+        return preg_match(self::USER_AGENT_VERSION_PATTERN, (string) $request->userAgent(), $matches) === 1
+            ? (int) $matches[1]
+            : null;
+    }
+    private function sendsIataFlightTypes(Request $request): bool
+    {
+        $major = $this->clientMajorVersion($request);
+        return $major !== null && $major >= self::IATA_FLIGHT_TYPES_MIN_MAJOR;
+    }
+    private function sourceName(Request $request): string
+    {
+        $major = $this->clientMajorVersion($request);
+        return $major !== null && $major >= self::IATA_FLIGHT_TYPES_MIN_MAJOR
+            ? self::SOURCE_NAME_PREFIX.$major
+            : self::SOURCE_NAME_DEFAULT;
+    }
+    private function outputFlightType(Request $request, $type)
+    {
+        return $this->sendsIataFlightTypes($request) ? $type : $this->flightType($type);
+    }
     public function rebook(Request $request)
     {
-        $bid = Bid::find($request->input('bidID'));
+        $bid = Bid::where(['id' => $request->input('bidID'), 'user_id' => Auth::id()])->first();
+        if ($bid === null) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
         // force setting the aircraft selected for smartCARS bidding
         $bid->aircraft_id = $request->input('aircraftID');
         $bid->save();
@@ -110,7 +167,7 @@ class FlightsController extends Controller
             $output[] = [
                 "bidID"            => $bid->id,
                 "number"           => $bid->flight->flight_number,
-                "code"             => $bid->flight->airline->code,
+                "code"             => ScSettings::airlineCode($bid->flight->airline),
                 "departureAirport" => $bid->flight->dpt_airport_id,
                 "arrivalAirport"   => $bid->flight->arr_airport_id,
                 "route"            => $bid->flight->route ? explode(" ", $bid->flight->route) : null,
@@ -119,9 +176,9 @@ class FlightsController extends Controller
                 "departureTime"    => $bid->flight->dpt_time,
                 "arrivalTime"      => $bid->flight->arr_time,
                 "flightTime"       => $ft_converted,
-                "daysOfWeek"       => $bid->flight->days,
+                "daysOfWeek"       => $this->daysOfWeek($bid->flight->days),
                 "flightID"         => $bid->flight->id,
-                "type"             => $this->flightType($bid->flight->flight_type),
+                "type"             => $this->outputFlightType($request, $bid->flight->flight_type),
                 "aircraft"         => $aircraft,
                 "notes"            => $bid->flight->notes
             ];
@@ -131,9 +188,63 @@ class FlightsController extends Controller
     }
     public function cancel(Request $request)
     {
-        $input = $request->all();
-        $pirep = Pirep::find($input['uuid']);
-        $this->pirepService->cancel($pirep);
+        $pirep = Pirep::where(['id' => $request->input('uuid'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['status' => 200]);
+        }
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED, PirepState::CANCELLED], true)) {
+            return response()->json(['message' => 'This flight has already been filed'], 409);
+        }
+
+        // A CANCELLED one is a retry: phpVMS refuses to cancel it twice
+        if ($pirep->state !== PirepState::CANCELLED) {
+            $this->pirepService->cancel($pirep);
+        }
+        if (!ScSettings::isCancelDelete()) {
+            return response()->json(['status' => 200]);
+        }
+
+        DB::transaction(function () use ($pirep) {
+            // Keep flight_id so the OFP stays on the booked flight
+            SimBrief::where('pirep_id', $pirep->id)->update(['pirep_id' => null]);
+            Acars::where('pirep_id', $pirep->id)->delete();
+            PirepLog::where('pirep_id', $pirep->id)->delete();
+            FlightAnalysis::where('pirep_id', $pirep->id)->delete();
+            $this->pirepService->delete($pirep);
+        });
+
+        return response()->json(['status' => 200]);
+    }
+    public function divert(Request $request)
+    {
+        $pirep = Pirep::where(['id' => $request->input('uuid'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['message' => 'No active flight'], 404);
+        }
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED], true)) {
+            return response()->json(['message' => 'This flight is not in progress'], 409);
+        }
+        if (!setting('pireps.handle_diversion', false)) {
+            return response()->json(['message' => 'Diversion handling is disabled for this VA'], 422);
+        }
+
+        $icao = strtoupper(trim((string) $request->input('airport')));
+        if ($icao === '' || Airport::find($icao) === null) {
+            return response()->json(['message' => 'Unknown airport'], 422);
+        }
+
+        if ($icao === $pirep->arr_airport_id) {
+            // The status stays as is: the next update restores the phase
+            PirepFieldValue::where(['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG])->delete();
+        } else {
+            PirepFieldValue::updateOrCreate(
+                ['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG],
+                ['name' => 'Diversion Airport', 'value' => $icao, 'source' => PirepFieldSource::ACARS]
+            );
+            $pirep->status = PirepStatus::DIVERTED;
+            $pirep->save();
+        }
+
         return response()->json(['status' => 200]);
     }
     public function charter(Request $request)
@@ -196,6 +307,18 @@ class FlightsController extends Controller
     }
     public function complete(Request $request)
     {
+        $pirep = Pirep::where(['id' => $request->input('uuid'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['message' => 'No active flight'], 404);
+        }
+        // A retry after a failure past the save must not log the flight a second time
+        if (in_array($pirep->state, [PirepState::PENDING, PirepState::ACCEPTED, PirepState::REJECTED], true)) {
+            return response()->json(['pirepID' => $pirep->id]);
+        }
+        if (!in_array($pirep->state, [PirepState::IN_PROGRESS, PirepState::PAUSED], true)) {
+            return response()->json(['message' => 'This flight is not in progress'], 409);
+        }
+
         $input = $request->all();
         if (gettype($input['flightLog']) === "string") {
             $input['flightLog'] = base64_decode($input['flightLog'], true);
@@ -209,14 +332,12 @@ class FlightsController extends Controller
             //logger("Flight Data");
             //logger($input['flightData']);
         }
-        $pirep = Pirep::find($input['uuid']);
-        
 
         //Log::debug("Found Pirep to close out");
         $pirep->status = PirepStatus::ARRIVED;
         $pirep->state = PirepState::PENDING;
         $pirep->source = PirepSource::ACARS;
-        $pirep->source_name = "smartCARS 3";
+        $pirep->source_name = $this->sourceName($request);
         $pirep->landing_rate = $input['landingRate'];
         $pirep->fuel_used = $input['fuelUsed'];
         $pirep->flight_time = $input['flightTime'] * 60;
@@ -274,12 +395,11 @@ class FlightsController extends Controller
         $output = [];
 
         $query = [];
-        $subfleet = null;
-        $limit = 100;
+        $limit = self::SEARCH_LIMIT;
 
         if ($request->has('limit') && $request->query('limit') !== null) {
             $limit = $request->query('limit');
-            $limit = min($limit, 100);
+            $limit = min($limit, self::SEARCH_LIMIT);
         }
 
         if ($request->has('departureAirport') && $request->query('departureAirport') !== null) {
@@ -298,73 +418,167 @@ class FlightsController extends Controller
                 $query['arr_airport_id'] = $apt->id;
             }
         }
-	if ($request->has('minimumDistance')) {
-		array_push($query, ['distance', '>=', (int)$request->query('minimumDistance')]);
-	}
-	if ($request->has('maximumDistance')) {
-		array_push($query, ['distance', '<=', (int)$request->query('maximumDistance')]);
-	}
-	if ($request->has('minimumFlightTime')) {
-		array_push($query, ['flight_time', '>=', (int)$request->query('minimumFlightTime') * 60]);
-	}
-	if ($request->has('maximumFlightTime')) {
-		array_push($query, ['flight_time', '<=', (int)$request->query('maximumFlightTime') * 60]);
-	}
 
-        if ($request->has('aircraft') && $request->query('aircraft') !== null) {
-            // Yank the subfleet by ID
-            $apt = Subfleet::find($request->query('aircraft'));
-            if (!is_null($apt)) {
-                $subfleet = $apt->id;
-            }
+        $query = array_merge($query, $this->rangeConditions(
+            $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
+        ));
+
+        $flights = Flight::where($query)
+            ->where('visible', true)
+            ->whereColumn('dpt_airport_id', '!=', 'arr_airport_id');
+
+        $aircraftId = $request->query('aircraft');
+        if (is_numeric($aircraftId)) {
+            $flights->whereHas('subfleets.aircraft', function ($q) use ($aircraftId) {
+                $q->where('aircraft.id', (int) $aircraftId);
+            });
         }
-        if (!empty($subfleet)) {
-            if (empty($query)) {
-                $flights = Flight::with('subfleets', 'subfleets.aircraft', 'airline')->whereHas('subfleets', function ($query) use ($subfleet) {
-                    $query->where(['subfleets.id' => $subfleet, 'visible' => true]);
-                })->take(100)->get();
-            } else {
-                $flights = Flight::where($query)->with('subfleets', 'subfleets.aircraft', 'airline')->whereHas('subfleets', function ($query) use ($subfleet) {
-                    $query->where(['subfleets.id' => $subfleet, 'visible' => true]);
-                })->take(100)->get();
-            }
-        } else {
-            if (empty($query)) {
-                $flights = Flight::with('subfleets', 'subfleets.aircraft', 'airline')->where('visible', true)->take($limit)->get();
-            } else {
-                $flights = Flight::where($query)->with('subfleets', 'subfleets.aircraft', 'airline')->where('visible', true)->take($limit)->get();
-            }
-        }
+
+        $flights = $flights->with('subfleets', 'subfleets.aircraft', 'airline')->take($limit)->get();
 
         foreach ($flights as $flight) {
-            $aircraft = [];
-            $flight = $this->flightService->filterSubfleets($request->user(), $flight);
-            foreach ($flight->subfleets as $subfleet) {
-                foreach ($subfleet->aircraft as $acf) {
-                    $aircraft[] = $acf['id'];
-                }
-            }
-            $ft_converted = floatval(number_format($flight->flight_time / 60, 2));
-            $output[] = [
-                "id"               => $flight->id,
-                "number"           => $flight->flight_number,
-                "code"             => $flight->airline->code,
-                "departureAirport" => $flight->dpt_airport_id,
-                "arrivalAirport"   => $flight->arr_airport_id,
-                "flightLevel"      => $flight->level,
-                "route"            => $flight->route ? explode(" ", $flight->route) : null,
-                "distance"         => $flight->distance->local(),
-                "departureTime"    => $flight->dpt_time,
-                "arrivalTime"      => $flight->arr_time,
-                "flightTime"       => $ft_converted,
-                "daysOfWeek"       => [],
-                "type"             => $this->flightType($flight->flight_type),
-                "aircraft"         => sizeof($aircraft) === 1 ? $aircraft[0] : $aircraft,
-                "notes"            => $flight->notes
-            ];
+            $output[] = $this->flightOutput($request, $flight);
         }
 
         return response()->json($output);
+    }
+    public function searchArrivals(Request $request)
+    {
+        $departures = $request->input('departureAirports');
+        if (!is_array($departures) || empty($departures)) {
+            return response()->json(['message' => 'departureAirports must be a non-empty array'], 400);
+        }
+
+        if (setting('pilots.only_flights_from_current')) {
+            $departureIds = [$request->user()->curr_airport_id];
+        } else {
+            $departureIds = Airport::whereIn('icao', array_values(array_filter($departures, 'is_string')))->pluck('id')->all();
+            if (empty($departureIds)) {
+                return response()->json([]);
+            }
+        }
+
+        $query = Flight::whereIn('dpt_airport_id', $departureIds)
+            ->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')
+            ->where($this->rangeConditions(
+                $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
+            ))
+            ->where('visible', true);
+
+        $arrivals = $request->input('arrivalAirports');
+        if (is_array($arrivals) && !empty($arrivals)) {
+            $arrivalIds = Airport::whereIn('icao', array_values(array_filter($arrivals, 'is_string')))->pluck('id');
+            if ($arrivalIds->isEmpty()) {
+                return response()->json([]);
+            }
+            $query->whereIn('arr_airport_id', $arrivalIds);
+        }
+
+        $aircraft = $request->input('aircraft');
+        if (is_array($aircraft) && !empty($aircraft)) {
+            $aircraftIds = array_map('intval', array_filter($aircraft, 'is_numeric'));
+            if (empty($aircraftIds)) {
+                return response()->json([]);
+            }
+            $query->whereHas('subfleets.aircraft', function ($q) use ($aircraftIds) {
+                $q->whereIn('aircraft.id', $aircraftIds);
+            });
+        }
+
+        $limit = (int)$request->input('limit', self::ARRIVAL_SEARCH_LIMIT);
+        if ($limit < 1 || $limit > self::ARRIVAL_SEARCH_LIMIT) {
+            $limit = self::ARRIVAL_SEARCH_LIMIT;
+        }
+        $perArrivalLimit = (int)$request->input('perArrivalLimit', 0);
+
+        $query->orderBy('distance');
+
+        if ($perArrivalLimit >= 1) {
+            // cursor() skips eager loading, so the kept flights are reloaded with their relations below
+            $countsByArrival = [];
+            $ids = [];
+            foreach ($query->cursor() as $candidate) {
+                $arrivalId = $candidate->arr_airport_id;
+                $countsByArrival[$arrivalId] = ($countsByArrival[$arrivalId] ?? 0) + 1;
+                if ($countsByArrival[$arrivalId] > $perArrivalLimit) {
+                    continue;
+                }
+                $ids[] = $candidate->id;
+                if (count($ids) >= $limit) {
+                    break;
+                }
+            }
+            $position = array_flip($ids);
+            $flights = Flight::whereIn('id', $ids)
+                ->with('subfleets', 'subfleets.aircraft', 'airline')
+                ->get()
+                ->sortBy(fn ($flight) => $position[$flight->id])
+                ->values();
+        } else {
+            $flights = $query->with('subfleets', 'subfleets.aircraft', 'airline')->take($limit)->get();
+        }
+
+        $output = [];
+        foreach ($flights as $flight) {
+            $output[] = $this->flightOutput($request, $flight);
+        }
+
+        return response()->json($output);
+    }
+    private function daysOfWeek(?int $days): array
+    {
+        $names = [];
+        foreach (self::DAY_NAMES as $bit => $name) {
+            if ($days !== null && ($days & $bit) !== 0) {
+                $names[] = $name;
+            }
+        }
+        return $names;
+    }
+    private function rangeConditions(array $values): array
+    {
+        $conditions = [];
+        if (array_key_exists('minimumDistance', $values)) {
+            $conditions[] = ['distance', '>=', (int)$values['minimumDistance']];
+        }
+        if (array_key_exists('maximumDistance', $values)) {
+            $conditions[] = ['distance', '<=', (int)$values['maximumDistance']];
+        }
+        if (array_key_exists('minimumFlightTime', $values)) {
+            $conditions[] = ['flight_time', '>=', (int) round((float) $values['minimumFlightTime'] * 60)];
+        }
+        if (array_key_exists('maximumFlightTime', $values)) {
+            $conditions[] = ['flight_time', '<=', (int) round((float) $values['maximumFlightTime'] * 60)];
+        }
+        return $conditions;
+    }
+    private function flightOutput(Request $request, Flight $flight): array
+    {
+        $aircraft = [];
+        $flight = $this->flightService->filterSubfleets($request->user(), $flight);
+        foreach ($flight->subfleets as $subfleet) {
+            foreach ($subfleet->aircraft as $acf) {
+                $aircraft[] = $acf['id'];
+            }
+        }
+        $ft_converted = floatval(number_format($flight->flight_time / 60, 2));
+        return [
+            "id"               => $flight->id,
+            "number"           => $flight->flight_number,
+            "code"             => ScSettings::airlineCode($flight->airline),
+            "departureAirport" => $flight->dpt_airport_id,
+            "arrivalAirport"   => $flight->arr_airport_id,
+            "flightLevel"      => $flight->level,
+            "route"            => $flight->route ? explode(" ", $flight->route) : null,
+            "distance"         => $flight->distance->local(),
+            "departureTime"    => $flight->dpt_time,
+            "arrivalTime"      => $flight->arr_time,
+            "flightTime"       => $ft_converted,
+            "daysOfWeek"       => $this->daysOfWeek($flight->days),
+            "type"             => $this->outputFlightType($request, $flight->flight_type),
+            "aircraft"         => sizeof($aircraft) === 1 ? $aircraft[0] : $aircraft,
+            "notes"            => $flight->notes
+        ];
     }
     public function start(Request $request)
     {
@@ -378,8 +592,8 @@ class FlightsController extends Controller
         } elseif ($bid->aircraft_id !== null) {
             $aircraft = $bid->aircraft_id;
         } else {
-            // if no aircraft is available, return a 500 error saying no aircraft is attached to the bid
-            return response()->json(['message' => 'No aircraft attached to bid'], 500);
+            // the pilot can fix this by choosing an aircraft, so it is a refusal and not a server error
+            return response()->json(['message' => 'No aircraft attached to bid'], 409);
         }
 
         $attrs = [
@@ -394,7 +608,7 @@ class FlightsController extends Controller
             'aircraft_id'      => $aircraft,
             'flight_id'        => $flight->id,
             'source'           => PirepSource::ACARS,
-            'source_name'      => "smartCARS 3"
+            'source_name'      => $this->sourceName($request)
         ];
         // find if there's a SimBrief OFP for this flight and user. If so, add it to the PIREP
         $simbrief = $flight->simbrief()->where('user_id', $user->id)->first();
@@ -404,7 +618,13 @@ class FlightsController extends Controller
         }
 
         try {
-            $pirep = $this->pirepService->prefile(Auth::user(), $attrs);
+            try {
+                $pirep = $this->pirepService->prefile(Auth::user(), $attrs);
+            } catch (AbstractHttpException $e) {
+                // prefile's refusals (aircraft unavailable, pilot elsewhere, ...) are the pilot's to act on
+                Log::warning($e->getMessage());
+                return response()->json(['message' => $e->getMessage()], 409);
+            }
             $this->generateFares(Aircraft::find($aircraft), $flight, $pirep);
         } catch (\Throwable $e) {
             // parse the exception to present it cleanly to the user the reason for the error
@@ -434,7 +654,7 @@ class FlightsController extends Controller
     {
         $input = $request->all();
         // Check if there's an active flight under that bid.
-        $pirep = Pirep::find($input['uuid']);
+        $pirep = Pirep::where(['id' => $input['uuid'], 'user_id' => Auth::id()])->first();
         // if no pirep, return a 404
         if ($pirep === null) {
             return response()->json(['message' => 'No active flight'], 404);
@@ -459,7 +679,14 @@ class FlightsController extends Controller
                 $pirep->status == PirepStatus::ARRIVED
             ) &&
             $pirep->block_on_time == null) {
-            $pirep->block_on_time == Carbon::now();
+            $pirep->block_on_time = Carbon::now();
+        }
+
+        if (
+            in_array($pirep->status, self::AIRBORNE_STATUSES, true) &&
+            PirepFieldValue::where(['pirep_id' => $pirep->id, 'slug' => self::DIVERSION_FIELD_SLUG])->exists()
+        ) {
+            $pirep->status = PirepStatus::DIVERTED;
         }
         $pirep->updated_at = Carbon::now();
 
@@ -550,7 +777,7 @@ class FlightsController extends Controller
             $loadmax = 100;
         }
 
-        if (setting('flights.use_cargo_load_factor ', false)) {
+        if (setting('flights.use_cargo_load_factor', false)) {
             $cgolfactor = $flight->load_factor ?? setting('flights.default_cargo_load_factor');
             $cgolfactorv = $flight->load_factor_variance ?? setting('flights.cargo_load_factor_variance');
 
@@ -615,6 +842,7 @@ class FlightsController extends Controller
                 return 'P';
                 break;
             case 'A':
+            case 'F':
             case 'H':
             case 'I':
             case 'K':

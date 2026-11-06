@@ -7,7 +7,6 @@ use App\Models\Enums\PirepState;
 use App\Models\Acars;
 use App\Models\Pirep;
 use App\Models\PirepComment;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Modules\SmartCARS3phpVMS7Api\Models\PirepLog;
@@ -19,6 +18,8 @@ use Illuminate\Support\Facades\Auth;
  */
 class PirepsController extends Controller
 {
+    private const SEARCH_STATUSES = ['Accepted', 'Pending', 'Rejected'];
+
     /**
      * Just send out a message
      *
@@ -28,10 +29,10 @@ class PirepsController extends Controller
      */
     public function details(Request $request)
     {
-        $pirepID = $request->get('id');
-        $user_id = $request->get('pilotID');
-
-        $pirep = Pirep::find($pirepID);
+        $pirep = Pirep::where(['id' => $request->get('id'), 'user_id' => Auth::id()])->first();
+        if ($pirep === null) {
+            return response()->json(['message' => 'PIREP not found'], 404);
+        }
         $pirep->load('comments', 'acars');
 
         return response()->json([
@@ -48,13 +49,18 @@ class PirepsController extends Controller
      */
     public function search(Request $request)
     {
-        $user = User::find($request->get('pilotID'));
-        $user->load('pireps', 'pireps.airline');
+        $user = Auth::user();
+        $user->load('pireps', 'pireps.airline', 'pireps.aircraft');
+        $filters = $this->searchFilters($request);
         $output_pireps = [];
         foreach ($user->pireps->sortByDesc('created_at') as $pirep) {
+            $submitDate = Carbon::createFromTimeString($pirep->submitted_at);
+            if (!$this->matchesFilters($pirep, $submitDate->toDateString(), $filters)) {
+                continue;
+            }
             $output_pireps[] = [
                 'id' => $pirep->id,
-                'submitDate' => Carbon::createFromTimeString($pirep->submitted_at)->toDateTimeString(),
+                'submitDate' => $submitDate->toDateTimeString(),
                 'airlineCode' => $pirep->airline->icao,
                 'route' => $pirep->route ? $pirep->route : '',
                 'number' => $pirep->flight_number,
@@ -70,6 +76,43 @@ class PirepsController extends Controller
             ];
         }
         return response()->json($output_pireps);
+    }
+
+    /**
+     * The search filters that parse. One that is empty or does not parse is left out, so it filters
+     * nothing: what smartCARS 3 sends here was never checked.
+     */
+    private function searchFilters(Request $request): array
+    {
+        $filters = [];
+        foreach (['departureAirport', 'arrivalAirport', 'aircraft'] as $name) {
+            $value = trim((string) $request->input($name, ''));
+            if ($value !== '') {
+                $filters[$name] = strtoupper($value);
+            }
+        }
+        $status = $request->input('status');
+        if (in_array($status, self::SEARCH_STATUSES, true)) {
+            $filters['status'] = $status;
+        }
+        foreach (['startDate', 'endDate'] as $name) {
+            $value = (string) $request->input($name, '');
+            if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $parts)
+                && checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])) {
+                $filters[$name] = $value;
+            }
+        }
+        return $filters;
+    }
+
+    private function matchesFilters(Pirep $pirep, string $submitDay, array $filters): bool
+    {
+        return (!isset($filters['departureAirport']) || strtoupper((string) $pirep->dpt_airport_id) === $filters['departureAirport'])
+            && (!isset($filters['arrivalAirport']) || strtoupper((string) $pirep->arr_airport_id) === $filters['arrivalAirport'])
+            && (!isset($filters['aircraft']) || strtoupper((string) $pirep->aircraft?->icao) === $filters['aircraft'])
+            && (!isset($filters['status']) || self::getStatus($pirep->state) === $filters['status'])
+            && (!isset($filters['startDate']) || $submitDay >= $filters['startDate'])
+            && (!isset($filters['endDate']) || $submitDay <= $filters['endDate']);
     }
 
     /**
