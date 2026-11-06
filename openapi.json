@@ -1284,7 +1284,7 @@
                                                 },
                                                 "message": {
                                                     "type": "string",
-                                                    "description": "The line's text, the flightData item's message; stored cut to 255 characters"
+                                                    "description": "The line's text, the flightData item's message; may be empty. phpVMS's request middleware trims it and turns an empty or blank one into null, stored as an empty log line; otherwise stored cut to 255 characters"
                                                 },
                                                 "timestamp": {
                                                     "type": "string",
@@ -1336,7 +1336,7 @@
                         }
                     },
                     "422": {
-                        "description": "422 - events is not an array, is empty or has more than 100 entries, or an entry lacks an integer index >= 0, a type of info, event or comment, a string message or a parseable timestamp",
+                        "description": "422 - events is not an array, is empty or has more than 100 entries, or an entry lacks an integer index >= 0, a type of info, event or comment, a message (a string, empty allowed) or a parseable timestamp",
                         "content": {
                             "application/json": {
                                 "schema": {

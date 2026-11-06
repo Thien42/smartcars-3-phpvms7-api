@@ -284,16 +284,18 @@ class FlightsController extends Controller
             if (
                 $eventId === null
                 || !in_array($event['type'] ?? null, self::FLIGHT_EVENT_TYPES, true)
-                || !is_string($event['message'] ?? null)
+                // ConvertEmptyStringsToNull turns a blank message into null before it gets here
+                || !array_key_exists('message', $event)
+                || !(is_string($event['message']) || $event['message'] === null)
                 || $createdAt === null
             ) {
-                return response()->json(['message' => 'Each event needs an integer index >= 0, a type of info, event or comment, a string message and a timestamp'], 422);
+                return response()->json(['message' => 'Each event needs an integer index >= 0, a type of info, event or comment, a message and a timestamp'], 422);
             }
             $rows[] = [
                 'id'         => $eventId,
                 'pirep_id'   => $pirep->id,
                 'type'       => AcarsType::LOG,
-                'log'        => mb_substr($event['message'], 0, self::ACARS_LOG_MAX_LENGTH),
+                'log'        => is_string($event['message']) ? mb_substr($event['message'], 0, self::ACARS_LOG_MAX_LENGTH) : null,
                 'created_at' => $createdAt,
                 'updated_at' => $now,
             ];
