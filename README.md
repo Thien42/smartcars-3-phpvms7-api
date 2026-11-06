@@ -117,12 +117,12 @@ A client may send the flight log lines while the flight is in progress with `POS
 - `uuid`: the PIREP ID of the ongoing flight (`bidID` is accepted and not used)
 - `index` (integer, >= 0): the line's 0-based position in the flight log, the same number the line has as `eventId` in the `flightData` filed with `flights/complete`
 - `type`: `info`, `event` or `comment`; checked, not stored
-- `message` (text, may be empty): the line, stored cut to 255 characters (phpVMS's `acars.log` column). phpVMS's request middleware trims it and turns an empty or blank one into null, which is stored as an empty log line
+- `message` (text, may be empty): the line, stored cut to 255 characters (phpVMS's `acars.log` column). phpVMS's request middleware trims it and turns an empty or blank one into null, which is stored as null (no log text)
 - `timestamp`: the line's UTC time, the `flightData` item's `eventTimestamp` (e.g. `2026-11-06 14:05:00z`), parsed as at filing
 
 Each line becomes a phpVMS ACARS row of type LOG for the PIREP, with the timestamp as its `created_at`. The row ID is derived from the PIREP ID and `index`, so the request is idempotent: a line sent again is ignored and the row stored first stays. At `flights/complete`, a `flightData` item whose `eventId` matches a stored line is not stored again; every other item is stored as before, so a client that never calls `flights/events` sees no change. The raw `flightData` copy in `sc_pirep_logs` is kept in full either way.
 
-A request carries at most 100 lines. Answers: 200 when stored, 401 for an invalid session, 404 when the pilot has no such flight, 409 when the flight is no longer in progress or paused (filed or cancelled), and 422 when `events` is not an array, is empty or has more than 100 entries, or an entry lacks an integer `index` >= 0, a valid `type`, a `message` (text, empty allowed) or a parseable `timestamp`. A batch is checked as a whole: one invalid entry stores nothing.
+A request carries at most 100 lines. Answers: 200 when stored, 401 for an invalid session, 404 when the pilot has no such flight, 409 when the flight is no longer in progress or paused (filed or cancelled), and 422 when `events` is not an array, is empty or has more than 100 entries, or an entry lacks an integer `index` >= 0, a valid `type`, a `message` (text, empty allowed) or a parseable `timestamp`. A batch is checked as a whole: one invalid entry stores nothing. Expect a client to retry on any other status (a 500, for example): it sends the same lines again later.
 
 ## Flight analyses
 

@@ -1227,7 +1227,7 @@
         "/flights/events": {
             "post": {
                 "summary": "Flight Events",
-                "description": "Store flight log lines while the flight is in progress, before it is filed. Each line becomes a phpVMS ACARS log row (type LOG) of the PIREP, shown in the flight log on the PIREP page and in the admin, with the line's message (cut to 255 characters) and its timestamp as the row's time. The row ID is derived from the PIREP ID and the line's index, so the request is idempotent: a line sent again with an index already stored is ignored and the first stored text and time stay. At /flights/complete, a flightData item whose eventId matches an index already stored is not stored a second time; the other items are stored as before. A batch is checked as a whole: one invalid entry refuses the whole request and stores nothing.",
+                "description": "Store flight log lines while the flight is in progress, before it is filed. Each line becomes a phpVMS ACARS log row (type LOG) of the PIREP, shown in the flight log on the PIREP page and in the admin, with the line's message (cut to 255 characters) and its timestamp as the row's time. The row ID is derived from the PIREP ID and the line's index, so the request is idempotent: a line sent again with an index already stored is ignored and the first stored text and time stay. At /flights/complete, a flightData item whose eventId matches an index already stored is not stored a second time; the other items are stored as before. A batch is checked as a whole: one invalid entry refuses the whole request and stores nothing. Expect a client to retry on any status other than those listed (a 500, for example): it sends the same lines again later.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -1284,7 +1284,7 @@
                                                 },
                                                 "message": {
                                                     "type": "string",
-                                                    "description": "The line's text, the flightData item's message; may be empty. phpVMS's request middleware trims it and turns an empty or blank one into null, stored as an empty log line; otherwise stored cut to 255 characters"
+                                                    "description": "The line's text, the flightData item's message; may be empty. phpVMS's request middleware trims it and turns an empty or blank one into null, stored as null (no log text); otherwise stored cut to 255 characters"
                                                 },
                                                 "timestamp": {
                                                     "type": "string",
