@@ -76,6 +76,8 @@ Included with this API is a job that'll recalculate PIREP distances for all smar
 
 To execute this, navigate directly to `/admin/smartcars/recalc` in your web browser (e.g. `https://myva.com/admin/smartcars/recalc`) to start the recalculation job.
 
+The job recomputes the distance from the positions for every PIREP filed under the module's default source name (`pireps.source_name`) and replaces the stored distance, including one filed with `distanceFlown` (see "Optional flight data" below). PIREPs a client filed under a versioned source name are left alone.
+
 If you have a private discord notification channel setup, you will receive progress updates regarding the status of the job as it executes on the backend.
 
 ## Optional flight data
