@@ -469,7 +469,7 @@ class FlightsController extends Controller
      */
     private function storedTime(Pirep $pirep, string $key): ?Carbon
     {
-        $raw = $pirep->getAttributes()[$key] ?? null;
+        $raw = $pirep->getRawOriginal($key);
         if ($raw === null || $raw === '') {
             return null;
         }
@@ -580,10 +580,12 @@ class FlightsController extends Controller
 
         // saveToPirep deletes every fare row, so the rows of a kind not filed are put back as they were
         $kept = PirepFare::where('pirep_id', $pirep->id)->whereIn('type', $keptTypes)->get();
-        $this->saveFaresOnce($pirep, $fares);
-        foreach ($kept as $row) {
-            $row->replicate()->save();
-        }
+        DB::transaction(function () use ($pirep, $fares, $kept) {
+            $this->saveFaresOnce($pirep, $fares);
+            foreach ($kept as $row) {
+                $row->replicate()->save();
+            }
+        });
     }
     /**
      * getFareWithPivot writes the subfleet and flight overrides onto the Fare models it is given,
