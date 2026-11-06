@@ -448,8 +448,13 @@ class FlightsController extends Controller
 
         $blockOff = $this->utcTime($input['blockOffTime'] ?? null);
         $blockOn = $this->utcTime($input['blockOnTime'] ?? null);
-        if ($blockOff !== null && $blockOn !== null && $blockOff->greaterThan($blockOn)) {
-            Log::warning('smartCARS: PIREP '.$pirep->id.' block off time is after its block on time, both ignored');
+        if ($blockOff === null && $blockOn === null) {
+            return;
+        }
+        $off = $blockOff ?? $this->storedTime($pirep, 'block_off_time');
+        $on = $blockOn ?? $this->storedTime($pirep, 'block_on_time');
+        if ($off !== null && $on !== null && $off->greaterThan($on)) {
+            Log::warning('smartCARS: PIREP '.$pirep->id.' block off time would be after its block on time, the filed block times are ignored');
             return;
         }
         if ($blockOff !== null) {
@@ -457,6 +462,25 @@ class FlightsController extends Controller
         }
         if ($blockOn !== null) {
             $pirep->block_on_time = $blockOn;
+        }
+    }
+    /**
+     * Read from the raw attributes: phpVMS's CarbonCast turns a null column into the current time
+     */
+    private function storedTime(Pirep $pirep, string $key): ?Carbon
+    {
+        $raw = $pirep->getAttributes()[$key] ?? null;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if ($raw instanceof \DateTimeInterface) {
+            return Carbon::instance($raw)->setTimezone('UTC');
+        }
+        try {
+            return Carbon::parse((string) $raw, 'UTC');
+        } catch (\Throwable $e) {
+            Log::warning('smartCARS: PIREP '.$pirep->id.' has an unreadable '.$key.': '.$e->getMessage());
+            return null;
         }
     }
     private function applyAircraftChange(Pirep $pirep, $aircraftId): void
@@ -484,6 +508,9 @@ class FlightsController extends Controller
         }
         if ($aircraft->state !== AircraftState::PARKED) {
             return 'it is not parked';
+        }
+        if (setting('pireps.only_aircraft_at_dpt_airport') && $aircraft->airport_id !== $pirep->dpt_airport_id) {
+            return 'it is not at the departure airport';
         }
         $isOnAnotherFlight = Pirep::where('aircraft_id', $aircraftId)
             ->where('id', '!=', $pirep->id)
@@ -528,24 +555,18 @@ class FlightsController extends Controller
             return;
         }
 
-        $pirep->refresh();
-        $allFares = $this->fareService->getAllFares($pirep->flight, $pirep->aircraft->subfleet);
+        $allFares = $this->freshFares($pirep);
         $totals = [FareType::PASSENGER => $passengers, FareType::CARGO => $cargo];
-        $existing = PirepFare::where('pirep_id', $pirep->id)->get();
 
         $fares = [];
+        $keptTypes = [];
         foreach ([FareType::PASSENGER, FareType::CARGO] as $type) {
             $typeFares = $allFares->filter(fn ($fare) => $fare->type === $type && $fare->capacity > 0)->values();
             if ($totals[$type] === null || $typeFares->isEmpty()) {
                 if ($totals[$type] !== null) {
                     Log::info('smartCARS: PIREP '.$pirep->id.' has no '.($type === FareType::PASSENGER ? 'passenger' : 'cargo').' fare for the filed load');
                 }
-                foreach ($allFares->filter(fn ($fare) => $fare->type === $type) as $fare) {
-                    $kept = $existing->first(fn ($row) => $row->code === $fare->code && (int) $row->type === $type);
-                    if ($kept !== null) {
-                        $fares[] = new PirepFare(['fare_id' => $fare->id, 'count' => $kept->count]);
-                    }
-                }
+                $keptTypes[] = $type;
                 continue;
             }
             $counts = $this->splitByCapacity($totals[$type], $typeFares->pluck('capacity')->all());
@@ -553,6 +574,31 @@ class FlightsController extends Controller
                 $fares[] = new PirepFare(['fare_id' => $fare->id, 'count' => $counts[$index]]);
             }
         }
+        if (empty($fares)) {
+            return;
+        }
+
+        // saveToPirep deletes every fare row, so the rows of a kind not filed are put back as they were
+        $kept = PirepFare::where('pirep_id', $pirep->id)->whereIn('type', $keptTypes)->get();
+        $this->saveFaresOnce($pirep, $fares);
+        foreach ($kept as $row) {
+            $row->replicate()->save();
+        }
+    }
+    /**
+     * getFareWithPivot writes the subfleet and flight overrides onto the Fare models it is given,
+     * so the module's fare list comes from fresh models and saveToPirep gets the PIREP without
+     * cached relations: a percentage override then applies once
+     */
+    private function freshFares(Pirep $pirep)
+    {
+        $flight = $pirep->flight_id !== null ? Flight::find($pirep->flight_id) : null;
+        return $this->fareService->getAllFares($flight, Aircraft::find($pirep->aircraft_id)->subfleet);
+    }
+    private function saveFaresOnce(Pirep $pirep, array $fares): void
+    {
+        $pirep->unsetRelation('aircraft');
+        $pirep->unsetRelation('flight');
         $this->fareService->saveToPirep($pirep, $fares);
     }
     /**
@@ -1026,7 +1072,7 @@ class FlightsController extends Controller
             if (!is_array($briefed)) {
                 return false;
             }
-            $allFares = $this->fareService->getAllFares($pirep->flight, $pirep->aircraft->subfleet);
+            $allFares = $this->freshFares($pirep);
             $fares = [];
             foreach ($briefed as $entry) {
                 if (!is_array($entry) || !is_numeric($entry['id'] ?? null) || !is_numeric($entry['count'] ?? null)) {
@@ -1042,7 +1088,7 @@ class FlightsController extends Controller
             if (empty($fares)) {
                 return false;
             }
-            $this->fareService->saveToPirep($pirep, array_values($fares));
+            $this->saveFaresOnce($pirep, array_values($fares));
             return true;
         } catch (\Throwable $e) {
             Log::error('smartCARS: could not use the SimBrief loads for PIREP '.$pirep->id.': '.$e->getMessage());

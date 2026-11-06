@@ -1349,12 +1349,12 @@
                                     "blockOffTime": {
                                         "type": "string",
                                         "format": "date-time",
-                                        "description": "Optional. Off-block time, ISO 8601 UTC; without it the server time of the first airborne update stays. Ignored with blockOnTime when after it"
+                                        "description": "Optional. Off-block time, ISO 8601 UTC; without it the server time of the first airborne update stays. Ignored (the stored times kept) when it would fall after the on-block time, sent or stored"
                                     },
                                     "blockOnTime": {
                                         "type": "string",
                                         "format": "date-time",
-                                        "description": "Optional. On-block time, ISO 8601 UTC; without it the server time of the landed update stays (or the filing time). Ignored with blockOffTime when before it"
+                                        "description": "Optional. On-block time, ISO 8601 UTC; without it the server time of the landed update stays (or the filing time). Ignored (the stored times kept) when it would fall before the off-block time, sent or stored"
                                     },
                                     "passengers": {
                                         "type": "integer",
