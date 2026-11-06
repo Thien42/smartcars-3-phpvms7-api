@@ -661,7 +661,9 @@ class FlightsController extends Controller
         }
 
         // Check if a phase has changed
-        $pirep->status = $this->phaseToStatus($input['phase']);
+        $pirep->status = ($input['paused'] ?? false) === true
+            ? PirepStatus::PAUSED
+            : $this->phaseToStatus($input['phase']);
 
         // This section of code is more or less a patch until a better solution is implemented.
         if (
@@ -690,24 +692,79 @@ class FlightsController extends Controller
         }
         $pirep->updated_at = Carbon::now();
 
-        // Get current flight time by checking time since first ACARS telemetry report.
-        $first_acars = $pirep->acars()->first();
-        if ($first_acars !== null) {
-            $minutes = Carbon::now()->diffInMinutes($first_acars->created_at);
-            $pirep->flight_time = $minutes;
+        $flightTimeHours = $this->positiveNumber($input['flightTime'] ?? null);
+        if ($flightTimeHours !== null) {
+            $pirep->flight_time = (int) round($flightTimeHours * 60);
+        } else {
+            // Get current flight time by checking time since first ACARS telemetry report.
+            $first_acars = $pirep->acars()->first();
+            if ($first_acars !== null) {
+                $minutes = Carbon::now()->diffInMinutes($first_acars->created_at);
+                $pirep->flight_time = $minutes;
+            }
+        }
+
+        $distanceFlown = $this->positiveNumber($input['distanceFlown'] ?? null);
+        if ($distanceFlown !== null) {
+            $pirep->distance = $distanceFlown;
         }
         $pirep->save();
-        $pirep->acars()->create([
+
+        $position = [
             'id'       => Str::orderedUuid(),
             'status'   => $pirep->status,
             'type'     => AcarsType::FLIGHT_PATH,
             'lat'      => $input['latitude'],
             'lon'      => $input['longitude'],
-            'distance' => $pirep->planned_distance->local(2) - $input['distanceRemaining'],
+            'distance' => $distanceFlown ?? $pirep->planned_distance->local(2) - $input['distanceRemaining'],
             'heading'  => $input['heading'],
-            'altitude' => $input['altitude'],
             'gs'       => $input['groundSpeed']
-        ]);
+        ];
+        // Acars's altitude mutator copies the value into altitude_agl and altitude_msl
+        $altitudeAgl = $this->finiteNumber($input['altitudeAgl'] ?? null);
+        if ($altitudeAgl !== null && $altitudeAgl >= 0) {
+            $position['altitude_agl'] = $altitudeAgl;
+            $position['altitude_msl'] = $input['altitude'];
+        } else {
+            $position['altitude'] = $input['altitude'];
+        }
+        $ias = $this->positiveNumber($input['ias'] ?? null);
+        if ($ias !== null) {
+            $position['ias'] = (int) round($ias);
+        }
+        $verticalSpeed = $this->finiteNumber($input['verticalSpeed'] ?? null);
+        if ($verticalSpeed !== null) {
+            $position['vs'] = $verticalSpeed;
+        }
+        $pirep->acars()->create($position);
+    }
+
+    private function finiteNumber($value): ?float
+    {
+        if (!is_int($value) && !is_float($value) && !(is_string($value) && is_numeric($value))) {
+            return null;
+        }
+        $number = (float) $value;
+        return is_finite($number) ? $number : null;
+    }
+
+    private function positiveNumber($value): ?float
+    {
+        $number = $this->finiteNumber($value);
+        return $number !== null && $number > 0 ? $number : null;
+    }
+
+    private function utcTime($value): ?Carbon
+    {
+        if (!is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/', $value) !== 1) {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->setTimezone('UTC');
+        } catch (\Throwable $e) {
+            Log::warning('smartCARS: ignoring unparseable time '.$value.': '.$e->getMessage());
+            return null;
+        }
     }
 
     public function phaseToStatus(string $phase)
