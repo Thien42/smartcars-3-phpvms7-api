@@ -1,7 +1,7 @@
 {
     "openapi": "3.1.0",
     "info": {
-        "version": "1.5.0",
+        "version": "1.6.0",
         "title": "smartCARS 3 Public API"
     },
     "paths": {
@@ -884,6 +884,39 @@
                                     },
                                     "uuid": {
                                         "type": "string"
+                                    },
+                                    "paused": {
+                                        "type": "boolean",
+                                        "description": "Optional. true sets the PIREP status to paused (PSD) and keeps the PIREP in progress; false or missing maps phase as usual"
+                                    },
+                                    "ias": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Indicated airspeed in knots, stored as the position's IAS"
+                                    },
+                                    "verticalSpeed": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Optional. Vertical speed in feet per minute, negative when descending, stored as the position's vertical speed"
+                                    },
+                                    "altitudeAgl": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "minimum": 0,
+                                        "description": "Optional. Height above ground in feet, stored as the position's AGL altitude (altitude then gives the MSL altitude); without it both take altitude"
+                                    },
+                                    "distanceFlown": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Distance flown so far in nautical miles, stored as the position's and the PIREP's distance; without it the position's distance is the planned distance minus distanceRemaining"
+                                    },
+                                    "flightTime": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Flight time so far in decimal hours, stored as the PIREP's flight time; without it the flight time is the time since the first position"
                                     }
                                 }
                             }
@@ -1263,6 +1296,76 @@
                                     },
                                     "comments": {
                                         "type": "string"
+                                    },
+                                    "aircraft": {
+                                        "type": "integer",
+                                        "description": "Optional. The aircraft flown; when it differs from the PIREP's aircraft the PIREP takes it only if it exists, the pilot may fly its subfleet, it is parked and no other flight or pilot holds it (otherwise the PIREP keeps its aircraft). Fares are not regenerated"
+                                    },
+                                    "network": {
+                                        "type": "string",
+                                        "description": "Optional. The network flown on, stored as the PIREP's Network field value"
+                                    },
+                                    "simVersion": {
+                                        "type": "string",
+                                        "description": "Optional. The simulator and its version, stored as the PIREP's Simulator field value"
+                                    },
+                                    "score": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "minimum": 0,
+                                        "maximum": 100,
+                                        "description": "Optional. Flight score out of 100, stored rounded as the PIREP's score"
+                                    },
+                                    "cruiseLevel": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Cruise level in feet, stored rounded as the PIREP's flight level"
+                                    },
+                                    "blockFuel": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Fuel on board at off-block in lbs; without it the block fuel is read from the pushback log line"
+                                    },
+                                    "zfw": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Zero fuel weight in lbs"
+                                    },
+                                    "distanceFlown": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Distance flown in nautical miles; without it the distance is computed from the positions"
+                                    },
+                                    "blockTime": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "exclusiveMinimum": 0,
+                                        "description": "Optional. Block time (off-block to on-block) in decimal hours"
+                                    },
+                                    "blockOffTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "description": "Optional. Off-block time, ISO 8601 UTC; without it the server time of the first airborne update stays. Ignored with blockOnTime when after it"
+                                    },
+                                    "blockOnTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "description": "Optional. On-block time, ISO 8601 UTC; without it the server time of the landed update stays (or the filing time). Ignored with blockOffTime when before it"
+                                    },
+                                    "passengers": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Optional. Passengers flown; replaces the PIREP's passenger fares, split over them in proportion to their capacity"
+                                    },
+                                    "cargo": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "minimum": 0,
+                                        "description": "Optional. Cargo flown in lbs (converted to kg when the VA's weight unit is kg); replaces the PIREP's cargo fares, split over them in proportion to their capacity"
                                     }
                                 }
                             }

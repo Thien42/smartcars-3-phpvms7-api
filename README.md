@@ -78,6 +78,36 @@ To execute this, navigate directly to `/admin/smartcars/recalc` in your web brow
 
 If you have a private discord notification channel setup, you will receive progress updates regarding the status of the job as it executes on the backend.
 
+## Optional flight data
+
+A client may send optional fields on `flights/update` and `flights/complete` so the flight fills phpVMS's own fields (live map, PIREP page, admin views, finances) like a native ACARS client. Each field is used only when it is sent and plausible; a missing, null or implausible value keeps the behavior described for it. A client that sends none of them sees no change.
+
+`flights/update`:
+
+- `ias` (kt, > 0): the position's indicated airspeed (`acars.ias`). Without it the position has no IAS.
+- `verticalSpeed` (fpm, any finite number, negative when descending): the position's vertical speed (`acars.vs`).
+- `altitudeAgl` (ft, >= 0): the position's height above ground (`acars.altitude_agl`), with `altitude` as `altitude_msl`. Without it both take `altitude`.
+- `distanceFlown` (nm, > 0): the position's distance (`acars.distance`) and the PIREP's distance (`pireps.distance`), stored in nautical miles, phpVMS's internal unit, whatever the VA's display unit. Without it the position's distance is the planned distance minus `distanceRemaining` and the PIREP's distance is left alone.
+- `flightTime` (decimal hours, > 0): the PIREP's flight time (`pireps.flight_time`, stored in minutes). Without it the flight time is the time since the first position.
+- `paused` (boolean): `true` sets the PIREP status to paused (`PSD`); the PIREP stays in progress, so it stays on the live map and can still be filed. `false` or missing maps `phase` as before.
+
+`flights/complete`:
+
+- `score` (0 to 100): `pireps.score`, rounded. phpVMS's PIREP page shows the score and landing rate only when both are non-zero.
+- `cruiseLevel` (ft, > 0): `pireps.level`, rounded.
+- `blockFuel` (lbs, > 0): `pireps.block_fuel`. Without it the block fuel comes from the "Pushing back with N lbs/kgs of fuel" log line, as before.
+- `zfw` (lbs, > 0): `pireps.zfw`.
+- `distanceFlown` (nm, > 0): `pireps.distance`. Without it the distance is computed from the positions.
+- `blockTime` (decimal hours, > 0): `pireps.block_time`, stored in minutes.
+- `blockOffTime` and `blockOnTime` (ISO 8601 UTC, e.g. `2026-11-06T14:05:00Z`): `pireps.block_off_time` and `pireps.block_on_time`. Without them the server times recorded by the updates stay (phpVMS uses the filing time for a missing block on time). Both are ignored when the off-block time is after the on-block time.
+- `passengers` (integer, >= 0) and `cargo` (lbs, >= 0): the loads flown. They replace the PIREP's fares: the passengers are split over the aircraft's passenger fares and the cargo over its cargo fares, in proportion to each fare's capacity (phpVMS's subfleet and flight fare overrides), as whole counts that add up to the total. Cargo is converted to kg when the VA's weight unit is kg, as phpVMS's own SimBrief form counts cargo fares in that unit. A kind that is not sent, or that the aircraft has no fare for, keeps the fares set at start.
+- `aircraft` (aircraft ID): when it differs from the PIREP's aircraft, the PIREP takes it only if it exists, its subfleet is one the pilot may fly (phpVMS's rank and type rating restrictions), it is parked, no other flight in progress uses it, and (with phpVMS's SimBrief or bid aircraft blocking enabled) no other pilot holds it. Otherwise the PIREP keeps its aircraft and the reason is logged. Fares are not regenerated for the new aircraft.
+- `network` and `simVersion` (text): stored as the PIREP's `Network` and `Simulator` field values (source ACARS), shown on the PIREP page. The module's migration creates the two PIREP field definitions unless the VA already has fields with those slugs.
+
+At filing the module also saves the planned route rows from the PIREP's route (phpVMS's `saveRoute`, as its own ACARS file endpoint does) when the PIREP has none, so the route is drawn on the PIREP page.
+
+At start, when the pilot generated a SimBrief briefing in phpVMS for the flight with the started aircraft, the module saves the loads phpVMS rolled for that briefing (`simbrief.fare_data`) as the PIREP's fares. Otherwise it rolls the loads from the load factors, as before.
+
 ## Flight analyses
 
 smartCARS can upload the analyses of a finished flight (landing analysis, flight score, takeoff analysis, approach and takeoff trails, debrief). The module stores them in the `sc_flight_analyses` table, one row per PIREP, and answers `POST /pireps/analyses` (upload) and `POST /pireps/analyses/search` (lookup by PIREP IDs). Cancelling a flight deletes its row when the cancelled flights setting is `delete`.
