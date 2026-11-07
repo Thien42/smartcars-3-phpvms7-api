@@ -148,7 +148,7 @@ Columns:
 
 ## Flight search order and pages
 
-`GET /flights/search` and `POST /flights/search/arrivals` return their flights in a stable order: by route distance, shortest first, then departure airport, then arrival airport, then flight ID. The route distance is the great-circle distance between the two airports' coordinates, the same for every flight of a route (not the flight's own `distance` field), so a route's flights are always adjacent. A flight whose airport has no coordinates comes last.
+`GET /flights/search` and `POST /flights/search/arrivals` return their flights in a stable order: by route distance, shortest first, then departure airport, then arrival airport, then flight ID. The route distance is the great-circle distance between the two airports' coordinates, the same for every flight of a route (not the flight's own `distance` field), so a route's flights are always adjacent. A flight whose airport has no coordinates (unset, or 0/0) comes last.
 
 A page holds at most `limit` flights (250 at most, and 250 when `limit` is missing or below 1). The answer carries three headers:
 
@@ -156,7 +156,7 @@ A page holds at most `limit` flights (250 at most, and 250 when `limit` is missi
 - `X-SmartCARS-Total-Routes`: the number of distinct departure and arrival airport pairs among them
 - `X-SmartCARS-Next-Cursor`: present when more results follow, absent on the last page
 
-To get the next page, repeat the request unchanged with the cursor added as `cursor` (a query parameter on `flights/search`, a body field on `flights/search/arrivals`). The cursor is opaque and never expires: it holds the position of the last flight sent, so a flight added or hidden between pages is neither skipped nor repeated among the remaining results. A malformed cursor answers `400` with `{"message": "Invalid cursor"}`. The totals use the same filters as the page, including the pilot's current airport when only flights from the current airport are allowed.
+To get the next page, repeat the request unchanged with the cursor added as `cursor` (a query parameter on `flights/search`, a body field on `flights/search/arrivals`). The cursor is opaque and never expires: it holds the position of the last flight sent, so a flight added or hidden between pages is neither skipped nor repeated among the remaining results. A change to an airport's coordinates between two page requests can move that route's flights. A malformed cursor answers `400` with `{"message": "Invalid cursor"}`. The totals use the same filters as the page, including the pilot's current airport when only flights from the current airport are allowed.
 
 The body is the same JSON array of flights as before, and the headers are sent to every client; a client that ignores them gets the first page. On `flights/search/arrivals`, `perArrivalLimit` turns paging off: the answer keeps at most that many flights per arrival airport, in the order above, carries none of the three headers and ignores `cursor`.
 

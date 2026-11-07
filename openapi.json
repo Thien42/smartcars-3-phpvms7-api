@@ -51,7 +51,7 @@
         "/flights/search": {
             "get": {
                 "summary": "Search Flights",
-                "description": "Search for available flights with optional parameters to filter a search. Results are ordered by route distance (the great-circle distance between the two airports, shortest first; a flight whose airport has no coordinates comes last), then departure airport, then arrival airport, then flight id, so a route's flights are always adjacent. A page holds at most limit flights (250 at most). When more results follow, the X-SmartCARS-Next-Cursor header carries a cursor: repeat the same request with it as cursor to get the next page. The totals headers count every matching flight, across all pages. A client that ignores the headers gets the first page.",
+                "description": "Search for available flights with optional parameters to filter a search. Results are ordered by route distance (the great-circle distance between the two airports, shortest first; a flight whose airport has no coordinates (unset, or 0/0) comes last), then departure airport, then arrival airport, then flight id, so a route's flights are always adjacent. A page holds at most limit flights (250 at most). When more results follow, the X-SmartCARS-Next-Cursor header carries a cursor: repeat the same request with it as cursor to get the next page. The totals headers count every matching flight, across all pages. A client that ignores the headers gets the first page.",
                 "parameters": [
                     {
                         "in": "query",
@@ -70,7 +70,7 @@
                         "schema": {
                             "type": "string"
                         },
-                        "description": "The X-SmartCARS-Next-Cursor value of the previous page, to get the page after it. Opaque; it does not expire. Flights added or hidden between pages are neither skipped nor repeated among the remaining results. The other parameters are repeated unchanged."
+                        "description": "The X-SmartCARS-Next-Cursor value of the previous page, to get the page after it. Opaque; it does not expire. Flights added or hidden between pages are neither skipped nor repeated among the remaining results. A change to an airport's coordinates between two page requests can move that route's flights. The other parameters are repeated unchanged."
                     },
                     {
                         "in": "query",
@@ -191,7 +191,7 @@
         "/flights/search/arrivals": {
             "post": {
                 "summary": "Search Flights",
-                "description": "Search for flights across three dimensions: any of several departure airports, optionally any of several arrival airports, and optionally any of several aircraft. Results are ordered by route distance (the great-circle distance between the two airports, shortest first; a flight whose airport has no coordinates comes last), then departure airport, then arrival airport, then flight id, so a route's flights are always adjacent. A page holds at most limit flights (250 at most). Without perArrivalLimit the search is paged: when more results follow, the X-SmartCARS-Next-Cursor header carries a cursor, sent back as cursor with the rest of the body unchanged to get the next page, and the totals headers count every matching flight across all pages. A client that ignores the headers gets the first page. When perArrivalLimit is given, at most that many flights are kept per arrival airport, in the same order, before the overall limit is applied; that answer is not paged, carries none of the three headers and ignores cursor. When the only-flights-from-current-airport setting is on, the pilot's current airport is used as the only departure, whatever the request says.",
+                "description": "Search for flights across three dimensions: any of several departure airports, optionally any of several arrival airports, and optionally any of several aircraft. Results are ordered by route distance (the great-circle distance between the two airports, shortest first; a flight whose airport has no coordinates (unset, or 0/0) comes last), then departure airport, then arrival airport, then flight id, so a route's flights are always adjacent. A page holds at most limit flights (250 at most). Without perArrivalLimit the search is paged: when more results follow, the X-SmartCARS-Next-Cursor header carries a cursor, sent back as cursor with the rest of the body unchanged to get the next page, and the totals headers count every matching flight across all pages. A client that ignores the headers gets the first page. When perArrivalLimit is given, at most that many flights are kept per arrival airport, in the same order, before the overall limit is applied; that answer is not paged, carries none of the three headers and ignores cursor. When the only-flights-from-current-airport setting is on, the pilot's current airport is used as the only departure, whatever the request says.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -259,7 +259,7 @@
                                     },
                                     "cursor": {
                                         "type": "string",
-                                        "description": "The X-SmartCARS-Next-Cursor value of the previous page, to get the page after it. Opaque; it does not expire. Flights added or hidden between pages are neither skipped nor repeated among the remaining results. Ignored when perArrivalLimit is given"
+                                        "description": "The X-SmartCARS-Next-Cursor value of the previous page, to get the page after it. Opaque; it does not expire. Flights added or hidden between pages are neither skipped nor repeated among the remaining results. A change to an airport's coordinates between two page requests can move that route's flights. Ignored when perArrivalLimit is given"
                                     }
                                 }
                             }

@@ -54,7 +54,7 @@ class FlightsController extends Controller
 {
     private const SEARCH_LIMIT = 250;
     private const ARRIVAL_SEARCH_LIMIT = 250;
-    private const ROUTE_ORDER_SQL = 'sc_route_key, flights.dpt_airport_id, flights.arr_airport_id, flights.id';
+    private const ROUTE_TIE_BREAK_SQL = 'flights.dpt_airport_id, flights.arr_airport_id, flights.id';
     private const NEXT_CURSOR_HEADER = 'X-SmartCARS-Next-Cursor';
     private const TOTAL_FLIGHTS_HEADER = 'X-SmartCARS-Total-Flights';
     private const TOTAL_ROUTES_HEADER = 'X-SmartCARS-Total-Routes';
@@ -873,7 +873,7 @@ class FlightsController extends Controller
     }
     private function routeKeySql(): string
     {
-        return 'COALESCE(ROUND(3440.065 * 2 * ASIN(SQRT(POWER(SIN(RADIANS(sc_arr.lat - sc_dpt.lat) / 2), 2) + COS(RADIANS(sc_dpt.lat)) * COS(RADIANS(sc_arr.lat)) * POWER(SIN(RADIANS(sc_arr.lon - sc_dpt.lon) / 2), 2))) * 1000), 999999999)';
+        return 'COALESCE(CASE WHEN (sc_dpt.lat = 0 AND sc_dpt.lon = 0) OR (sc_arr.lat = 0 AND sc_arr.lon = 0) THEN NULL ELSE ROUND(3440.065 * 2 * ASIN(LEAST(1, SQRT(POWER(SIN(RADIANS(sc_arr.lat - sc_dpt.lat) / 2), 2) + COS(RADIANS(sc_dpt.lat)) * COS(RADIANS(sc_arr.lat)) * POWER(SIN(RADIANS(sc_arr.lon - sc_dpt.lon) / 2), 2)))) * 1000) END, 999999999)';
     }
     private function withRouteOrder($query)
     {
@@ -882,7 +882,7 @@ class FlightsController extends Controller
             ->leftJoin('airports as sc_arr', 'sc_arr.id', '=', 'flights.arr_airport_id')
             ->select('flights.*')
             ->selectRaw($this->routeKeySql().' as sc_route_key')
-            ->orderByRaw(self::ROUTE_ORDER_SQL);
+            ->orderByRaw('sc_route_key, '.self::ROUTE_TIE_BREAK_SQL);
     }
     private function decodeCursor($raw): array|false|null
     {
@@ -947,7 +947,7 @@ class FlightsController extends Controller
         $page = $this->withRouteOrder(clone $baseQuery);
         if ($cursor !== null) {
             $page->whereRaw(
-                '('.$this->routeKeySql().', flights.dpt_airport_id, flights.arr_airport_id, flights.id) > (?, ?, ?, ?)',
+                '('.$this->routeKeySql().', '.self::ROUTE_TIE_BREAK_SQL.') > (?, ?, ?, ?)',
                 [$cursor['k'], $cursor['d'], $cursor['a'], $cursor['i']]
             );
         }
