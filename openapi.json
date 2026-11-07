@@ -2836,6 +2836,11 @@
                         "type": "string",
                         "pattern": "^[A-Z]{4}$"
                     },
+                    "alternateAirport": {
+                        "type": ["string", "null"],
+                        "pattern": "^[A-Z]{4}$",
+                        "description": "The alternate airport published on the flight, null when it has none"
+                    },
                     "route": {
                         "type": "array",
                         "items": {

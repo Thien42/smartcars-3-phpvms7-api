@@ -146,6 +146,10 @@ Columns:
 
 `GET /data/airports` and `GET /data/aircraft` answer with an `ETag` header, the SHA-1 of the exact JSON body. A client may send it back as `If-None-Match`; an unchanged list then answers `304` with no body and the same `ETag`. The lists are still read from the database on every request, so the saving is the transfer and the client's own processing. `OPTIONS` answers are unchanged.
 
+## Alternate airport
+
+Every flight of `GET /flights/bookings`, `GET /flights/search` and `POST /flights/search/arrivals` carries `alternateAirport`, the alternate airport published on the flight, or `null` when it has none. `POST /flights/start` stores it as the alternate of the PIREP it creates.
+
 ## Flight search order and pages
 
 `GET /flights/search` and `POST /flights/search/arrivals` return their flights in a stable order: by route distance, shortest first, then departure airport, then arrival airport, then flight ID. The route distance is the great-circle distance between the two airports' coordinates, the same for every flight of a route (not the flight's own `distance` field), so a route's flights are always adjacent. A flight whose airport has no coordinates (unset, or 0/0) comes last.
