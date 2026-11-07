@@ -146,6 +146,20 @@ Columns:
 
 `GET /data/airports` and `GET /data/aircraft` answer with an `ETag` header, the SHA-1 of the exact JSON body. A client may send it back as `If-None-Match`; an unchanged list then answers `304` with no body and the same `ETag`. The lists are still read from the database on every request, so the saving is the transfer and the client's own processing. `OPTIONS` answers are unchanged.
 
+## Flight search order and pages
+
+`GET /flights/search` and `POST /flights/search/arrivals` return their flights in a stable order: by route distance, shortest first, then departure airport, then arrival airport, then flight ID. The route distance is the great-circle distance between the two airports' coordinates, the same for every flight of a route (not the flight's own `distance` field), so a route's flights are always adjacent. A flight whose airport has no coordinates comes last.
+
+A page holds at most `limit` flights (250 at most, and 250 when `limit` is missing or below 1). The answer carries three headers:
+
+- `X-SmartCARS-Total-Flights`: every flight matching the search, across all pages
+- `X-SmartCARS-Total-Routes`: the number of distinct departure and arrival airport pairs among them
+- `X-SmartCARS-Next-Cursor`: present when more results follow, absent on the last page
+
+To get the next page, repeat the request unchanged with the cursor added as `cursor` (a query parameter on `flights/search`, a body field on `flights/search/arrivals`). The cursor is opaque and never expires: it holds the position of the last flight sent, so a flight added or hidden between pages is neither skipped nor repeated among the remaining results. A malformed cursor answers `400` with `{"message": "Invalid cursor"}`. The totals use the same filters as the page, including the pilot's current airport when only flights from the current airport are allowed.
+
+The body is the same JSON array of flights as before, and the headers are sent to every client; a client that ignores them gets the first page. On `flights/search/arrivals`, `perArrivalLimit` turns paging off: the answer keeps at most that many flights per arrival airport, in the order above, carries none of the three headers and ignores `cursor`.
+
 ## Auto-update
 
 The module can update itself from GitHub whenever the fork's `master` branch is pushed. The updater is off by default and does nothing until it is switched on.

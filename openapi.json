@@ -1,7 +1,7 @@
 {
     "openapi": "3.1.0",
     "info": {
-        "version": "1.7.0",
+        "version": "1.8.0",
         "title": "smartCARS 3 Public API"
     },
     "paths": {
@@ -51,8 +51,27 @@
         "/flights/search": {
             "get": {
                 "summary": "Search Flights",
-                "description": "Search for available flights with optional parameters to filter a search",
+                "description": "Search for available flights with optional parameters to filter a search. Results are ordered by route distance (the great-circle distance between the two airports, shortest first; a flight whose airport has no coordinates comes last), then departure airport, then arrival airport, then flight id, so a route's flights are always adjacent. A page holds at most limit flights (250 at most). When more results follow, the X-SmartCARS-Next-Cursor header carries a cursor: repeat the same request with it as cursor to get the next page. The totals headers count every matching flight, across all pages. A client that ignores the headers gets the first page.",
                 "parameters": [
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 250,
+                            "default": 250
+                        },
+                        "description": "The maximum number of flights on the page"
+                    },
+                    {
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The X-SmartCARS-Next-Cursor value of the previous page, to get the page after it. Opaque; it does not expire. Flights added or hidden between pages are neither skipped nor repeated among the remaining results. The other parameters are repeated unchanged."
+                    },
                     {
                         "in": "query",
                         "name": "departureAirport",
@@ -127,7 +146,12 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "200 - Return a list of all available flights",
+                        "description": "200 - Return a page of the available flights",
+                        "headers": {
+                            "X-SmartCARS-Next-Cursor": {"description": "Present when more results follow; send it back as cursor to get the next page. Absent on the last page.", "schema": {"type": "string"}},
+                            "X-SmartCARS-Total-Flights": {"description": "The number of flights matching the search, across all pages.", "schema": {"type": "integer"}},
+                            "X-SmartCARS-Total-Routes": {"description": "The number of distinct departure and arrival airport pairs among the matching flights.", "schema": {"type": "integer"}}
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -140,7 +164,7 @@
                         }
                     },
                     "400": {
-                        "description": "400 - Invalid type",
+                        "description": "400 - Invalid type, or a malformed cursor (message Invalid cursor)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -167,7 +191,7 @@
         "/flights/search/arrivals": {
             "post": {
                 "summary": "Search Flights",
-                "description": "Search for flights across three dimensions: any of several departure airports, optionally any of several arrival airports, and optionally any of several aircraft. Results are ordered by distance, shortest first, and capped at 250. When perArrivalLimit is given, at most that many flights are kept per arrival airport before the overall limit is applied. When the only-flights-from-current-airport setting is on, the pilot's current airport is used as the only departure, whatever the request says.",
+                "description": "Search for flights across three dimensions: any of several departure airports, optionally any of several arrival airports, and optionally any of several aircraft. Results are ordered by route distance (the great-circle distance between the two airports, shortest first; a flight whose airport has no coordinates comes last), then departure airport, then arrival airport, then flight id, so a route's flights are always adjacent. A page holds at most limit flights (250 at most). Without perArrivalLimit the search is paged: when more results follow, the X-SmartCARS-Next-Cursor header carries a cursor, sent back as cursor with the rest of the body unchanged to get the next page, and the totals headers count every matching flight across all pages. A client that ignores the headers gets the first page. When perArrivalLimit is given, at most that many flights are kept per arrival airport, in the same order, before the overall limit is applied; that answer is not paged, carries none of the three headers and ignores cursor. When the only-flights-from-current-airport setting is on, the pilot's current airport is used as the only departure, whatever the request says.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -226,12 +250,16 @@
                                         "minimum": 1,
                                         "maximum": 250,
                                         "default": 250,
-                                        "description": "The maximum number of flights to return"
+                                        "description": "The maximum number of flights on the page"
                                     },
                                     "perArrivalLimit": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "description": "The maximum number of flights to keep per arrival airport, taken in distance order before limit is applied"
+                                        "description": "The maximum number of flights to keep per arrival airport, taken in route distance order before limit is applied. Turns paging off"
+                                    },
+                                    "cursor": {
+                                        "type": "string",
+                                        "description": "The X-SmartCARS-Next-Cursor value of the previous page, to get the page after it. Opaque; it does not expire. Flights added or hidden between pages are neither skipped nor repeated among the remaining results. Ignored when perArrivalLimit is given"
                                     }
                                 }
                             }
@@ -240,7 +268,12 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "200 - Return a list of all available flights",
+                        "description": "200 - Return a page of the available flights",
+                        "headers": {
+                            "X-SmartCARS-Next-Cursor": {"description": "Present when more results follow; send it back as cursor to get the next page. Absent on the last page and when perArrivalLimit is given.", "schema": {"type": "string"}},
+                            "X-SmartCARS-Total-Flights": {"description": "The number of flights matching the search, across all pages. Absent when perArrivalLimit is given.", "schema": {"type": "integer"}},
+                            "X-SmartCARS-Total-Routes": {"description": "The number of distinct departure and arrival airport pairs among the matching flights. Absent when perArrivalLimit is given.", "schema": {"type": "integer"}}
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -253,7 +286,7 @@
                         }
                     },
                     "400": {
-                        "description": "400 - Missing departureAirports",
+                        "description": "400 - Missing departureAirports, or a malformed cursor (message Invalid cursor)",
                         "content": {
                             "application/json": {
                                 "schema": {

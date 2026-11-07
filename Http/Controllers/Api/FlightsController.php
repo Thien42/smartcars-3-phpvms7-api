@@ -54,6 +54,11 @@ class FlightsController extends Controller
 {
     private const SEARCH_LIMIT = 250;
     private const ARRIVAL_SEARCH_LIMIT = 250;
+    private const ROUTE_ORDER_SQL = 'sc_route_key, flights.dpt_airport_id, flights.arr_airport_id, flights.id';
+    private const NEXT_CURSOR_HEADER = 'X-SmartCARS-Next-Cursor';
+    private const TOTAL_FLIGHTS_HEADER = 'X-SmartCARS-Total-Flights';
+    private const TOTAL_ROUTES_HEADER = 'X-SmartCARS-Total-Routes';
+    private const INVALID_CURSOR_MESSAGE = 'Invalid cursor';
     private const DIVERSION_FIELD_SLUG = 'diversion-airport';
     private const NETWORK_FIELD_SLUG = 'network';
     private const NETWORK_FIELD_NAME = 'Network';
@@ -723,8 +728,6 @@ class FlightsController extends Controller
     }
     public function search(Request $request)
     {
-        $output = [];
-
         $query = [];
         $limit = self::SEARCH_LIMIT;
 
@@ -732,21 +735,30 @@ class FlightsController extends Controller
             $limit = $request->query('limit');
             $limit = min($limit, self::SEARCH_LIMIT);
         }
+        $limit = (int) $limit;
+        if ($limit < 1) {
+            $limit = self::SEARCH_LIMIT;
+        }
+
+        $cursor = $this->decodeCursor($request->query('cursor'));
+        if ($cursor === false) {
+            return $this->invalidCursorJson();
+        }
 
         if ($request->has('departureAirport') && $request->query('departureAirport') !== null) {
             $apt = Airport::where('icao', $request->query('departureAirport'))->first();
             if (!is_null($apt)) {
-                $query['dpt_airport_id'] = $apt->id;
+                $query['flights.dpt_airport_id'] = $apt->id;
             }
         }
         // If Current Airport Setting is enabled, force current airport as the search
         if (setting('pilots.only_flights_from_current')) {
-            $query['dpt_airport_id'] = $request->user()->curr_airport_id;
+            $query['flights.dpt_airport_id'] = $request->user()->curr_airport_id;
         }
         if ($request->has('arrivalAirport') && $request->query('arrivalAirport') !== null) {
             $apt = Airport::where('icao', $request->query('arrivalAirport'))->first();
             if (!is_null($apt)) {
-                $query['arr_airport_id'] = $apt->id;
+                $query['flights.arr_airport_id'] = $apt->id;
             }
         }
 
@@ -755,8 +767,8 @@ class FlightsController extends Controller
         ));
 
         $flights = Flight::where($query)
-            ->where('visible', true)
-            ->whereColumn('dpt_airport_id', '!=', 'arr_airport_id');
+            ->where('flights.visible', true)
+            ->whereColumn('flights.dpt_airport_id', '!=', 'flights.arr_airport_id');
 
         $aircraftId = $request->query('aircraft');
         if (is_numeric($aircraftId)) {
@@ -765,13 +777,7 @@ class FlightsController extends Controller
             });
         }
 
-        $flights = $flights->with('subfleets', 'subfleets.aircraft', 'airline')->take($limit)->get();
-
-        foreach ($flights as $flight) {
-            $output[] = $this->flightOutput($request, $flight);
-        }
-
-        return response()->json($output);
+        return $this->pagedJson($request, $flights, $limit, $cursor);
     }
     public function searchArrivals(Request $request)
     {
@@ -780,36 +786,46 @@ class FlightsController extends Controller
             return response()->json(['message' => 'departureAirports must be a non-empty array'], 400);
         }
 
+        $perArrivalLimit = (int)$request->input('perArrivalLimit', 0);
+        $isPaged = $perArrivalLimit < 1;
+        $cursor = null;
+        if ($isPaged) {
+            $cursor = $this->decodeCursor($request->input('cursor'));
+            if ($cursor === false) {
+                return $this->invalidCursorJson();
+            }
+        }
+
         if (setting('pilots.only_flights_from_current')) {
             $departureIds = [$request->user()->curr_airport_id];
         } else {
             $departureIds = Airport::whereIn('icao', array_values(array_filter($departures, 'is_string')))->pluck('id')->all();
             if (empty($departureIds)) {
-                return response()->json([]);
+                return $this->emptySearchJson($isPaged);
             }
         }
 
-        $query = Flight::whereIn('dpt_airport_id', $departureIds)
-            ->whereColumn('dpt_airport_id', '!=', 'arr_airport_id')
+        $query = Flight::whereIn('flights.dpt_airport_id', $departureIds)
+            ->whereColumn('flights.dpt_airport_id', '!=', 'flights.arr_airport_id')
             ->where($this->rangeConditions(
                 $request->only(['minimumDistance', 'maximumDistance', 'minimumFlightTime', 'maximumFlightTime'])
             ))
-            ->where('visible', true);
+            ->where('flights.visible', true);
 
         $arrivals = $request->input('arrivalAirports');
         if (is_array($arrivals) && !empty($arrivals)) {
             $arrivalIds = Airport::whereIn('icao', array_values(array_filter($arrivals, 'is_string')))->pluck('id');
             if ($arrivalIds->isEmpty()) {
-                return response()->json([]);
+                return $this->emptySearchJson($isPaged);
             }
-            $query->whereIn('arr_airport_id', $arrivalIds);
+            $query->whereIn('flights.arr_airport_id', $arrivalIds);
         }
 
         $aircraft = $request->input('aircraft');
         if (is_array($aircraft) && !empty($aircraft)) {
             $aircraftIds = array_map('intval', array_filter($aircraft, 'is_numeric'));
             if (empty($aircraftIds)) {
-                return response()->json([]);
+                return $this->emptySearchJson($isPaged);
             }
             $query->whereHas('subfleets.aircraft', function ($q) use ($aircraftIds) {
                 $q->whereIn('aircraft.id', $aircraftIds);
@@ -820,34 +836,33 @@ class FlightsController extends Controller
         if ($limit < 1 || $limit > self::ARRIVAL_SEARCH_LIMIT) {
             $limit = self::ARRIVAL_SEARCH_LIMIT;
         }
-        $perArrivalLimit = (int)$request->input('perArrivalLimit', 0);
 
-        $query->orderBy('distance');
-
-        if ($perArrivalLimit >= 1) {
-            // cursor() skips eager loading, so the kept flights are reloaded with their relations below
-            $countsByArrival = [];
-            $ids = [];
-            foreach ($query->cursor() as $candidate) {
-                $arrivalId = $candidate->arr_airport_id;
-                $countsByArrival[$arrivalId] = ($countsByArrival[$arrivalId] ?? 0) + 1;
-                if ($countsByArrival[$arrivalId] > $perArrivalLimit) {
-                    continue;
-                }
-                $ids[] = $candidate->id;
-                if (count($ids) >= $limit) {
-                    break;
-                }
-            }
-            $position = array_flip($ids);
-            $flights = Flight::whereIn('id', $ids)
-                ->with('subfleets', 'subfleets.aircraft', 'airline')
-                ->get()
-                ->sortBy(fn ($flight) => $position[$flight->id])
-                ->values();
-        } else {
-            $flights = $query->with('subfleets', 'subfleets.aircraft', 'airline')->take($limit)->get();
+        if ($isPaged) {
+            return $this->pagedJson($request, $query, $limit, $cursor);
         }
+
+        $this->withRouteOrder($query);
+
+        // cursor() skips eager loading, so the kept flights are reloaded with their relations below
+        $countsByArrival = [];
+        $ids = [];
+        foreach ($query->cursor() as $candidate) {
+            $arrivalId = $candidate->arr_airport_id;
+            $countsByArrival[$arrivalId] = ($countsByArrival[$arrivalId] ?? 0) + 1;
+            if ($countsByArrival[$arrivalId] > $perArrivalLimit) {
+                continue;
+            }
+            $ids[] = $candidate->id;
+            if (count($ids) >= $limit) {
+                break;
+            }
+        }
+        $position = array_flip($ids);
+        $flights = Flight::whereIn('id', $ids)
+            ->with('subfleets', 'subfleets.aircraft', 'airline')
+            ->get()
+            ->sortBy(fn ($flight) => $position[$flight->id])
+            ->values();
 
         $output = [];
         foreach ($flights as $flight) {
@@ -855,6 +870,104 @@ class FlightsController extends Controller
         }
 
         return response()->json($output);
+    }
+    private function routeKeySql(): string
+    {
+        return 'COALESCE(ROUND(3440.065 * 2 * ASIN(SQRT(POWER(SIN(RADIANS(sc_arr.lat - sc_dpt.lat) / 2), 2) + COS(RADIANS(sc_dpt.lat)) * COS(RADIANS(sc_arr.lat)) * POWER(SIN(RADIANS(sc_arr.lon - sc_dpt.lon) / 2), 2))) * 1000), 999999999)';
+    }
+    private function withRouteOrder($query)
+    {
+        return $query
+            ->leftJoin('airports as sc_dpt', 'sc_dpt.id', '=', 'flights.dpt_airport_id')
+            ->leftJoin('airports as sc_arr', 'sc_arr.id', '=', 'flights.arr_airport_id')
+            ->select('flights.*')
+            ->selectRaw($this->routeKeySql().' as sc_route_key')
+            ->orderByRaw(self::ROUTE_ORDER_SQL);
+    }
+    private function decodeCursor($raw): array|false|null
+    {
+        if ($raw === null) {
+            return null;
+        }
+        if (!is_string($raw) || preg_match('/^[A-Za-z0-9_-]+$/', $raw) !== 1) {
+            return false;
+        }
+        $base64 = strtr($raw, '-_', '+/');
+        $base64 .= str_repeat('=', (4 - strlen($base64) % 4) % 4);
+        $json = base64_decode($base64, true);
+        if ($json === false) {
+            return false;
+        }
+        $cursor = json_decode($json, true);
+        if (
+            !is_array($cursor)
+            || !is_int($cursor['k'] ?? null)
+            || !is_string($cursor['d'] ?? null)
+            || !is_string($cursor['a'] ?? null)
+            || !is_string($cursor['i'] ?? null)
+        ) {
+            return false;
+        }
+        return ['k' => $cursor['k'], 'd' => $cursor['d'], 'a' => $cursor['a'], 'i' => $cursor['i']];
+    }
+    private function encodeCursor(Flight $flight): string
+    {
+        // The key is a DOUBLE in SQL and may come back as a float or a numeric string
+        $json = json_encode([
+            'k' => (int) round((float) $flight->sc_route_key),
+            'd' => (string) $flight->dpt_airport_id,
+            'a' => (string) $flight->arr_airport_id,
+            'i' => (string) $flight->id,
+        ]);
+        return rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+    }
+    private function invalidCursorJson()
+    {
+        return response()->json(['message' => self::INVALID_CURSOR_MESSAGE], 400);
+    }
+    private function emptySearchJson(bool $isPaged)
+    {
+        $response = response()->json([]);
+        if ($isPaged) {
+            $response->withHeaders([
+                self::TOTAL_FLIGHTS_HEADER => '0',
+                self::TOTAL_ROUTES_HEADER  => '0',
+            ]);
+        }
+        return $response;
+    }
+    private function pagedJson(Request $request, $baseQuery, int $limit, ?array $cursor)
+    {
+        $totalFlights = (clone $baseQuery)->count('flights.id');
+        $totalRoutes = (clone $baseQuery)
+            ->toBase()
+            ->selectRaw('COUNT(DISTINCT flights.dpt_airport_id, flights.arr_airport_id) as n')
+            ->value('n');
+
+        $page = $this->withRouteOrder(clone $baseQuery);
+        if ($cursor !== null) {
+            $page->whereRaw(
+                '('.$this->routeKeySql().', flights.dpt_airport_id, flights.arr_airport_id, flights.id) > (?, ?, ?, ?)',
+                [$cursor['k'], $cursor['d'], $cursor['a'], $cursor['i']]
+            );
+        }
+        $flights = $page->with('subfleets', 'subfleets.aircraft', 'airline')->take($limit + 1)->get();
+
+        $headers = [
+            self::TOTAL_FLIGHTS_HEADER => (string) (int) $totalFlights,
+            self::TOTAL_ROUTES_HEADER  => (string) (int) $totalRoutes,
+        ];
+        if ($flights->count() > $limit) {
+            $flights = $flights->take($limit);
+            $headers[self::NEXT_CURSOR_HEADER] = $this->encodeCursor($flights->last());
+        }
+
+        $output = [];
+        foreach ($flights as $flight) {
+            $output[] = $this->flightOutput($request, $flight);
+        }
+
+        return response()->json($output)->withHeaders($headers);
     }
     private function daysOfWeek(?int $days): array
     {
@@ -870,16 +983,16 @@ class FlightsController extends Controller
     {
         $conditions = [];
         if (array_key_exists('minimumDistance', $values)) {
-            $conditions[] = ['distance', '>=', (int)$values['minimumDistance']];
+            $conditions[] = ['flights.distance', '>=', (int)$values['minimumDistance']];
         }
         if (array_key_exists('maximumDistance', $values)) {
-            $conditions[] = ['distance', '<=', (int)$values['maximumDistance']];
+            $conditions[] = ['flights.distance', '<=', (int)$values['maximumDistance']];
         }
         if (array_key_exists('minimumFlightTime', $values)) {
-            $conditions[] = ['flight_time', '>=', (int) round((float) $values['minimumFlightTime'] * 60)];
+            $conditions[] = ['flights.flight_time', '>=', (int) round((float) $values['minimumFlightTime'] * 60)];
         }
         if (array_key_exists('maximumFlightTime', $values)) {
-            $conditions[] = ['flight_time', '<=', (int) round((float) $values['maximumFlightTime'] * 60)];
+            $conditions[] = ['flights.flight_time', '<=', (int) round((float) $values['maximumFlightTime'] * 60)];
         }
         return $conditions;
     }
