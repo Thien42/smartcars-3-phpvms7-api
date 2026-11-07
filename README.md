@@ -142,6 +142,10 @@ Columns:
 
 `GET /` also answers `capabilities`, the optional features this backend supports (today `flight-analyses`, `flight-events`, `arrival-search`, `iata-flight-types` (clients sending a `smartCARS/<major>` User-Agent with major 4 or later get the phpVMS flight type letter as stored in the flight `type`; other clients get P or C), while the `pireps.handle_diversion` setting is enabled `divert`, and while auto-update is enabled `auto-update`). Each endpoint behind one also names it in the `X-SmartCARS-Capability` response header. Both come from the `scCapability` default on the route, so a new capability is declared once, on its route.
 
+## Unchanged lists
+
+`GET /data/airports` and `GET /data/aircraft` answer with an `ETag` header, the SHA-1 of the exact JSON body. A client may send it back as `If-None-Match`; an unchanged list then answers `304` with no body and the same `ETag`. The lists are still read from the database on every request, so the saving is the transfer and the client's own processing. `OPTIONS` answers are unchanged.
+
 ## Auto-update
 
 The module can update itself from GitHub whenever the fork's `master` branch is pushed. The updater is off by default and does nothing until it is switched on.
