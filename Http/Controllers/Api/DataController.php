@@ -19,6 +19,14 @@ use Modules\SmartCARS3phpVMS7Api\Support\ScSettings;
  */
 class DataController extends Controller
 {
+    private function jsonWithEtag(Request $request, $payload)
+    {
+        $response = response()->json($payload);
+        $response->setEtag(sha1($response->getContent()));
+        $response->isNotModified($request);
+        return $response;
+    }
+
     /**
      * Just send out a message
      *
@@ -55,7 +63,7 @@ class DataController extends Controller
                 "minimumRank" => 0
             ];
         }
-        return response()->json($output);
+        return $this->jsonWithEtag($request, $output);
     }
     public function subfleets(Request $request)
     {
@@ -72,7 +80,7 @@ class DataController extends Controller
                 'longitude' => $apt->lon
             ];
         });
-        return response()->json($airports);
+        return $this->jsonWithEtag($request, $airports);
     }
     public function news(Request $request)
     {

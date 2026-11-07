@@ -1913,9 +1913,15 @@
             "get": {
                 "summary": "Get Airports",
                 "description": "Get all the available departures and destinations",
+                "parameters": [
+                    {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}, "description": "The ETag of the list the client already holds. When it matches the current list, the answer is 304 with no body."}
+                ],
                 "responses": {
                     "200": {
                         "description": "200 - Return a list of all available airports",
+                        "headers": {
+                            "ETag": {"description": "Identifies the exact body. Send it back as If-None-Match to skip an unchanged list.", "schema": {"type": "string"}}
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1925,6 +1931,12 @@
                                     }
                                 }
                             }
+                        }
+                    },
+                    "304": {
+                        "description": "304 - The list is unchanged since the ETag sent in If-None-Match; the body is empty",
+                        "headers": {
+                            "ETag": {"description": "The ETag of the unchanged list.", "schema": {"type": "string"}}
                         }
                     },
                     "401": {
@@ -1945,9 +1957,15 @@
             "get": {
                 "summary": "Get Aircraft",
                 "description": "Get all the available aircraft",
+                "parameters": [
+                    {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}, "description": "The ETag of the list the client already holds. When it matches the current list, the answer is 304 with no body."}
+                ],
                 "responses": {
                     "200": {
                         "description": "200 - Return a list of all available aircraft",
+                        "headers": {
+                            "ETag": {"description": "Identifies the exact body. Send it back as If-None-Match to skip an unchanged list.", "schema": {"type": "string"}}
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1957,6 +1975,12 @@
                                     }
                                 }
                             }
+                        }
+                    },
+                    "304": {
+                        "description": "304 - The list is unchanged since the ETag sent in If-None-Match; the body is empty",
+                        "headers": {
+                            "ETag": {"description": "The ETag of the unchanged list.", "schema": {"type": "string"}}
                         }
                     },
                     "401": {
