@@ -1487,7 +1487,7 @@
                                         "type": "number",
                                         "format": "float",
                                         "exclusiveMinimum": 0,
-                                        "description": "Optional. Block time (off-block to on-block) in decimal hours"
+                                        "description": "Optional. Block time (off-block to on-block) in decimal hours. Accepted and not stored: phpVMS has no block time column, blockOffTime and blockOnTime carry it"
                                     },
                                     "blockOffTime": {
                                         "type": "string",

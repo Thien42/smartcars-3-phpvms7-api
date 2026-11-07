@@ -524,11 +524,6 @@ class FlightsController extends Controller
         if ($zfw !== null) {
             $pirep->zfw = $zfw;
         }
-        $blockTimeHours = $this->positiveNumber($input['blockTime'] ?? null);
-        if ($blockTimeHours !== null) {
-            $pirep->block_time = (int) round($blockTimeHours * 60);
-        }
-
         $blockOff = $this->utcTime($input['blockOffTime'] ?? null);
         $blockOn = $this->utcTime($input['blockOnTime'] ?? null);
         if ($blockOff === null && $blockOn === null) {
