@@ -1,7 +1,7 @@
 {
     "openapi": "3.1.0",
     "info": {
-        "version": "1.8.0",
+        "version": "1.9.0",
         "title": "smartCARS 3 Public API"
     },
     "paths": {
@@ -950,6 +950,60 @@
                                         "format": "float",
                                         "exclusiveMinimum": 0,
                                         "description": "Optional. Flight time so far in decimal hours, stored as the PIREP's flight time; without it the flight time is the time since the first position"
+                                    },
+                                    "mach": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Optional. Mach number; accepted and not stored (phpVMS has no column for it)"
+                                    },
+                                    "headingTrue": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Optional. True heading in degrees, 0 to 360; accepted and not stored (heading stays the stored heading)"
+                                    },
+                                    "headingMagnetic": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Optional. Magnetic heading in degrees, 0 to 360; accepted and not stored"
+                                    },
+                                    "pitch": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Optional. Pitch in degrees, positive nose up; accepted and not stored"
+                                    },
+                                    "bank": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Optional. Bank in degrees; accepted and not stored"
+                                    },
+                                    "transponder": {
+                                        "type": "string",
+                                        "pattern": "^[0-7]{4}$",
+                                        "description": "Optional. The squawk code as 4 octal digits (e.g. 7000), stored as the position's transponder (acars.transponder, an integer column, so 0200 is stored as 200); any other value is ignored"
+                                    },
+                                    "autopilot": {
+                                        "type": "boolean",
+                                        "description": "Optional. Whether the autopilot is engaged, stored as the position's autopilot (acars.autopilot, a text column: 1 engaged, 0 not); a non-boolean value is ignored"
+                                    },
+                                    "fuelFlow": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "minimum": 0,
+                                        "description": "Optional. Total fuel flow of all engines in lbs per hour, stored as the position's fuel flow (acars.fuel_flow, in lbs per hour, phpVMS's internal fuel unit, whatever the VA's display unit), rounded to 2 decimals; a negative, non-finite or out-of-range value is ignored"
+                                    },
+                                    "simTime": {
+                                        "type": "object",
+                                        "description": "Optional. The simulator's clock; zulu is stored as the position's sim time (acars.sim_time, YYYY-MM-DD HH:MM:SS), local is accepted and not stored. A zulu value not in the YYYY-MM-DDTHH:MM:SS form, or not a real date, is ignored",
+                                        "properties": {
+                                            "zulu": {
+                                                "type": "string",
+                                                "description": "UTC sim time without offset, e.g. 2026-11-07T14:31:37"
+                                            },
+                                            "local": {
+                                                "type": "string",
+                                                "description": "Local sim time without offset, same form; not stored"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1322,6 +1376,55 @@
                                                 "timestamp": {
                                                     "type": "string",
                                                     "description": "The line's UTC time, the flightData item's eventTimestamp (e.g. 2026-11-06 14:05:00z)"
+                                                },
+                                                "simTime": {
+                                                    "type": "object",
+                                                    "description": "Optional. The simulator's clock when the line was written; zulu is stored as the row's sim time (acars.sim_time, YYYY-MM-DD HH:MM:SS), local is accepted and not stored. A zulu value not in the YYYY-MM-DDTHH:MM:SS form, or not a real date, is ignored",
+                                                    "properties": {
+                                                        "zulu": {
+                                                            "type": "string",
+                                                            "description": "UTC sim time without offset, e.g. 2026-11-07T14:31:37"
+                                                        },
+                                                        "local": {
+                                                            "type": "string",
+                                                            "description": "Local sim time without offset, same form; not stored"
+                                                        }
+                                                    }
+                                                },
+                                                "timeIntoFlight": {
+                                                    "type": "number",
+                                                    "format": "float",
+                                                    "description": "Optional. Minutes since the flight started when the line was written; accepted and not stored"
+                                                },
+                                                "position": {
+                                                    "type": "object",
+                                                    "description": "Optional. Where the aircraft was when the line was written, stored as the row's lat, lon and altitude_msl when all three are finite numbers and latitude and longitude are in range; otherwise the row keeps phpVMS's default position (0, 0, 0) and the line is still stored. The row's altitude_agl is not filled",
+                                                    "properties": {
+                                                        "latitude": {
+                                                            "type": "number",
+                                                            "format": "float",
+                                                            "minimum": -90,
+                                                            "maximum": 90,
+                                                            "description": "Degrees"
+                                                        },
+                                                        "longitude": {
+                                                            "type": "number",
+                                                            "format": "float",
+                                                            "minimum": -180,
+                                                            "maximum": 180,
+                                                            "description": "Degrees"
+                                                        },
+                                                        "altitude": {
+                                                            "type": "number",
+                                                            "format": "float",
+                                                            "description": "Feet above mean sea level"
+                                                        }
+                                                    }
+                                                },
+                                                "variables": {
+                                                    "type": "object",
+                                                    "additionalProperties": true,
+                                                    "description": "Optional. Tracking values recorded for the line, keyed by variable name; accepted and not stored"
                                                 }
                                             }
                                         }

@@ -92,6 +92,11 @@ A client may send optional fields on `flights/update` and `flights/complete` so 
 - `distanceFlown` (nm, > 0): the position's distance (`acars.distance`) and the PIREP's distance (`pireps.distance`), stored in nautical miles, phpVMS's internal unit, whatever the VA's display unit. Without it the position's distance is the planned distance minus `distanceRemaining` and the PIREP's distance is left alone.
 - `flightTime` (decimal hours, > 0): the PIREP's flight time (`pireps.flight_time`, stored in minutes). Without it the flight time is the time since the first position.
 - `paused` (boolean): `true` sets the PIREP status to paused (`PSD`); the PIREP stays in progress, so it stays on the live map and can still be filed. phpVMS's hourly expiry crons skip paused flights, so a flight abandoned while paused is not deleted automatically (the pilot or an admin cancels it). `false` or missing maps `phase` as before.
+- `transponder` (text, exactly 4 octal digits, e.g. `7000`): the position's squawk (`acars.transponder`, an integer column, so `0200` is stored as `200`).
+- `autopilot` (boolean): the position's autopilot state (`acars.autopilot`, a text column: `1` engaged, `0` not).
+- `fuelFlow` (lbs/h, >= 0): the total fuel flow of all engines (`acars.fuel_flow`), stored in lbs per hour, phpVMS's internal fuel unit, whatever the VA's display unit, rounded to 2 decimals.
+- `simTime` (`{ zulu, local }`, each `YYYY-MM-DDTHH:MM:SS` without offset): `zulu` is the position's sim time (`acars.sim_time`, stored as `YYYY-MM-DD HH:MM:SS`, the form phpVMS's own ACARS API stores; phpVMS orders the positions of its `acars` position API by it). A value not in that form, or not a real date, is ignored. `local` is accepted and not stored.
+- `mach`, `headingTrue`, `headingMagnetic` (degrees), `pitch` (degrees, positive nose up) and `bank` (degrees): accepted and not stored, phpVMS has no column for them. `heading` stays the stored heading.
 
 `flights/complete`:
 
@@ -119,6 +124,12 @@ A client may send the flight log lines while the flight is in progress with `POS
 - `type`: `info`, `event` or `comment`; checked, not stored
 - `message` (text, may be empty): the line, stored cut to 255 characters (phpVMS's `acars.log` column). phpVMS's request middleware trims it and turns an empty or blank one into null, which is stored as null (no log text)
 - `timestamp`: the line's UTC time, the `flightData` item's `eventTimestamp` (e.g. `2026-11-06 14:05:00z`), parsed as at filing
+
+Each line may also carry these optional fields. A missing or malformed one is ignored and never refuses the request; the line is stored without it:
+
+- `simTime` (`{ zulu, local }`, each `YYYY-MM-DDTHH:MM:SS` without offset): `zulu` is the row's sim time (`acars.sim_time`, stored as `YYYY-MM-DD HH:MM:SS`), checked as on `flights/update`. `local` is accepted and not stored.
+- `position` (`{ latitude, longitude, altitude }`, degrees and feet MSL): where the aircraft was when the line was written, stored as the row's `lat`, `lon` and `altitude_msl` when all three are finite numbers and latitude and longitude are in range. Otherwise the row keeps phpVMS's default position (0, 0, 0). The row's `altitude_agl` is not filled.
+- `timeIntoFlight` (minutes since the flight started) and `variables` (an object of tracking values keyed by variable name): accepted and not stored, phpVMS has no column for them.
 
 Each line becomes a phpVMS ACARS row of type LOG for the PIREP, with the timestamp as its `created_at`. The row ID is derived from the PIREP ID and `index`, so the request is idempotent: a line sent again is ignored and the row stored first stays. At `flights/complete`, a `flightData` item whose `eventId` matches a stored line is not stored again; every other item is stored as before, so a client that never calls `flights/events` sees no change. The raw `flightData` copy in `sc_pirep_logs` is kept in full either way.
 

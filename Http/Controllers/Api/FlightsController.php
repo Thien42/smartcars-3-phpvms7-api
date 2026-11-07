@@ -92,6 +92,17 @@ class FlightsController extends Controller
     private const FLIGHT_EVENT_ID_PREFIX = 'scev';
     private const FLIGHT_EVENT_ID_HASH_LENGTH = 32;
     private const ACARS_LOG_MAX_LENGTH = 255;
+    private const ACARS_DECIMAL_MAX = 999999.99;
+    private const ACARS_POSITION_DEFAULT = 0.0;
+    private const MAX_LATITUDE = 90;
+    private const MAX_LONGITUDE = 180;
+    private const SIM_TIME_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/D';
+    private const SIM_TIME_INPUT_FORMAT = 'Y-m-d\TH:i:s';
+    private const SIM_TIME_COLUMN_FORMAT = 'Y-m-d H:i:s';
+    private const SIM_TIME_MIN_YEAR = 1;
+    private const TRANSPONDER_PATTERN = '/^[0-7]{4}$/D';
+    private const AUTOPILOT_ENGAGED = '1';
+    private const AUTOPILOT_DISENGAGED = '0';
 
     public function __construct(
         public FlightService $flightService,
@@ -304,7 +315,8 @@ class FlightsController extends Controller
                 'log'        => is_string($event['message']) ? mb_substr($event['message'], 0, self::ACARS_LOG_MAX_LENGTH) : null,
                 'created_at' => $createdAt,
                 'updated_at' => $now,
-            ];
+                'sim_time'   => $this->simTimeColumn($event['simTime'] ?? null),
+            ] + $this->logPositionColumns($event['position'] ?? null);
         }
         // First write wins: a resent line keeps the row stored the first time
         Acars::insertOrIgnore($rows);
@@ -322,6 +334,42 @@ class FlightsController extends Controller
         }
         // acars.id is a 36-character string; the prefix keeps these ids apart from phpVMS's own hash ids and UUIDs
         return self::FLIGHT_EVENT_ID_PREFIX.substr(hash('sha256', $pirepId.':'.$index), 0, self::FLIGHT_EVENT_ID_HASH_LENGTH);
+    }
+
+    private function simTimeColumn($simTime): ?string
+    {
+        $zulu = is_array($simTime) ? ($simTime['zulu'] ?? null) : null;
+        if (!is_string($zulu) || preg_match(self::SIM_TIME_PATTERN, $zulu) !== 1) {
+            return null;
+        }
+        $time = \DateTimeImmutable::createFromFormat('!'.self::SIM_TIME_INPUT_FORMAT, $zulu, new \DateTimeZone('UTC'));
+        // The round trip rejects dates PHP would roll over, like a 31 April
+        if ($time === false || $time->format(self::SIM_TIME_INPUT_FORMAT) !== $zulu || (int) $time->format('Y') < self::SIM_TIME_MIN_YEAR) {
+            return null;
+        }
+        // phpVMS's own ACARS API stores a Carbon here, which the query builder binds in this format
+        return $time->format(self::SIM_TIME_COLUMN_FORMAT);
+    }
+
+    private function logPositionColumns($position): array
+    {
+        $latitude = is_array($position) ? $this->finiteNumber($position['latitude'] ?? null) : null;
+        $longitude = is_array($position) ? $this->finiteNumber($position['longitude'] ?? null) : null;
+        $altitude = is_array($position) ? $this->finiteNumber($position['altitude'] ?? null) : null;
+        if (
+            $latitude !== null && abs($latitude) <= self::MAX_LATITUDE
+            && $longitude !== null && abs($longitude) <= self::MAX_LONGITUDE
+            && $altitude !== null && abs($altitude) <= self::ACARS_DECIMAL_MAX
+        ) {
+            // altitude_msl only: insertOrIgnore skips the Acars altitude mutator, so altitude_agl keeps its default
+            return ['lat' => $latitude, 'lon' => $longitude, 'altitude_msl' => $altitude];
+        }
+        // insertOrIgnore takes its columns from the first row, so every row carries them, with the columns' own defaults
+        return [
+            'lat'          => self::ACARS_POSITION_DEFAULT,
+            'lon'          => self::ACARS_POSITION_DEFAULT,
+            'altitude_msl' => self::ACARS_POSITION_DEFAULT,
+        ];
     }
 
     private function flightEventTime($value): ?Carbon
@@ -1050,7 +1098,7 @@ class FlightsController extends Controller
             'flight_type'      => $flight->flight_type,
             'dpt_airport_id'   => $flight->dpt_airport_id,
             'arr_airport_id'   => $flight->arr_airport_id,
-            'alt_airport_id'   => $flight->alt_airport_id,
+            'alt_airport_id'   => $flight->alt_airport_id ?: null,
             'planned_distance' => $flight->distance,
             'aircraft_id'      => $aircraft,
             'flight_id'        => $flight->id,
@@ -1184,6 +1232,24 @@ class FlightsController extends Controller
         $verticalSpeed = $this->finiteNumber($input['verticalSpeed'] ?? null);
         if ($verticalSpeed !== null) {
             $position['vs'] = $verticalSpeed;
+        }
+        $transponder = $input['transponder'] ?? null;
+        if (is_string($transponder) && preg_match(self::TRANSPONDER_PATTERN, $transponder) === 1) {
+            $position['transponder'] = (int) $transponder;
+        }
+        $autopilot = $input['autopilot'] ?? null;
+        if (is_bool($autopilot)) {
+            $position['autopilot'] = $autopilot ? self::AUTOPILOT_ENGAGED : self::AUTOPILOT_DISENGAGED;
+        }
+        $fuelFlow = $this->finiteNumber($input['fuelFlow'] ?? null);
+        $fuelFlow = $fuelFlow !== null ? round($fuelFlow, 2) : null;
+        // lbs per hour, phpVMS's internal fuel unit; the Acars model does not convert fuel_flow
+        if ($fuelFlow !== null && $fuelFlow >= 0 && $fuelFlow <= self::ACARS_DECIMAL_MAX) {
+            $position['fuel_flow'] = $fuelFlow;
+        }
+        $simTime = $this->simTimeColumn($input['simTime'] ?? null);
+        if ($simTime !== null) {
+            $position['sim_time'] = $simTime;
         }
         $pirep->acars()->create($position);
     }
