@@ -95,7 +95,7 @@ A client may send optional fields on `flights/update` and `flights/complete` so 
 - `transponder` (text, exactly 4 octal digits, e.g. `7000`): the position's squawk (`acars.transponder`, an integer column, so `0200` is stored as `200`).
 - `autopilot` (boolean): the position's autopilot state (`acars.autopilot`, a text column: `1` engaged, `0` not).
 - `fuelFlow` (lbs/h, >= 0): the total fuel flow of all engines (`acars.fuel_flow`), stored in lbs per hour, phpVMS's internal fuel unit, whatever the VA's display unit, rounded to 2 decimals.
-- `simTime` (`{ zulu, local }`, each `YYYY-MM-DDTHH:MM:SS` without offset): `zulu` is the position's sim time (`acars.sim_time`, stored as `YYYY-MM-DD HH:MM:SS`, the form phpVMS's own ACARS API stores; phpVMS orders the positions of its `acars` position API by it). A value not in that form, or not a real date, is ignored. `local` is accepted and not stored.
+- `simTime` (`{ zulu, local }`, each `YYYY-MM-DDTHH:MM:SS` without offset): `zulu` is the position's sim time (`acars.sim_time`, stored as `YYYY-MM-DD HH:MM:SS`, the form phpVMS's own ACARS API stores). A value not in that form, or not a real date, is ignored. phpVMS's position API (`GET /api/pireps/{id}/acars/position`) orders the positions by `sim_time`: there a position without a valid sim time sorts first, and a change of the sim clock during the flight reorders its points. The live map and the PIREP page order the positions by arrival time. `local` is accepted and not stored.
 - `mach`, `headingTrue`, `headingMagnetic` (degrees), `pitch` (degrees, positive nose up) and `bank` (degrees): accepted and not stored, phpVMS has no column for them. `heading` stays the stored heading.
 
 `flights/complete`:

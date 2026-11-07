@@ -1242,9 +1242,9 @@ class FlightsController extends Controller
             $position['autopilot'] = $autopilot ? self::AUTOPILOT_ENGAGED : self::AUTOPILOT_DISENGAGED;
         }
         $fuelFlow = $this->finiteNumber($input['fuelFlow'] ?? null);
-        $fuelFlow = $fuelFlow !== null ? round($fuelFlow, 2) : null;
+        $fuelFlow = $fuelFlow !== null && $fuelFlow >= 0 ? round($fuelFlow, 2) : null;
         // lbs per hour, phpVMS's internal fuel unit; the Acars model does not convert fuel_flow
-        if ($fuelFlow !== null && $fuelFlow >= 0 && $fuelFlow <= self::ACARS_DECIMAL_MAX) {
+        if ($fuelFlow !== null && $fuelFlow <= self::ACARS_DECIMAL_MAX) {
             $position['fuel_flow'] = $fuelFlow;
         }
         $simTime = $this->simTimeColumn($input['simTime'] ?? null);
